@@ -6,7 +6,7 @@ Tension Board 2 Spray, 12x12, at 35°, 40°, 45°, 50°, or 55°.
 The prediction contract is intentionally small:
 
 ```json
-{"predicted_grade":"7A+","confidence":0.6812}
+{"predicted_grade":"V7","confidence":0.6812}
 ```
 
 Confidence is the winning class probability after validation-set temperature
@@ -20,7 +20,12 @@ Each selected hold is a graph node with four kinds of information:
 - fixed placement identity;
 - route role (`start`, `hand`, `foot`, or `finish`);
 - normalized board coordinate;
-- wall angle.
+- material (`wood` or `plastic`).
+
+The wall angle is one continuous scalar input shared by the route. It is normalized
+around 45° before passing through a small projection network; angles are not treated
+as unrelated categories. Aurora does not expose reliable hold-shape or hold-difficulty
+metadata, so the model does not pretend that default placement roles are hold traits.
 
 Six transformer blocks perform attention between every selected hold. Each attention
 head receives a learned geometric bias built from horizontal distance, vertical
@@ -95,9 +100,9 @@ tension-train data/processed/tb2_spray_12x12.jsonl \
 ```
 
 Training uses AdamW, cosine decay, gradient clipping, early stopping, an ordinal
-distance penalty, and deterministic group splitting. All angles belonging to the
-same climb stay in one split, preventing the model from seeing a route at 40° during
-training and being tested on the identical route at 45°.
+distance penalty, and deterministic grade-stratified group splitting. The group key
+is the actual hold-role configuration rather than the climb UUID. Consequently, all
+angles and exact copies saved under different names remain in one split.
 
 Useful overrides:
 
@@ -132,14 +137,15 @@ evaluation.
 
 `checkpoints/tb2_spray_12x12.pt` was trained on the initial 8,766-example public
 dataset with native Aurora V-grade labels. Early stopping ended the 40-epoch run at
-epoch 23 and selected epoch 11. Its strictly held-out test results are:
+epoch 22 and selected epoch 10. Its duplicate-safe, grade-stratified held-out results are:
 
-- mean absolute error: 1.0288 V-grade steps;
-- within one V-grade step: 73.19%;
-- exact-grade accuracy: 33.03%;
-- confidence temperature: 1.43.
+- mean absolute error: 1.1464 V-grade steps;
+- within one V-grade step: 70.03%;
+- exact-grade accuracy: 30.42%;
+- confidence temperature: 1.36.
 
-This is an honest first checkpoint, not a production benchmark. The most promising
-next gains are adding hold-shape/material/orientation metadata, increasing the sparse
-35° and 55° labels, and comparing the transformer against an engineered-feature tree
-baseline. Making the network larger before those changes is unlikely to help.
+This stricter result supersedes the earlier UUID-only split. It is not a production
+benchmark. The most promising next gains are obtaining genuine hold-shape/orientation
+metadata, increasing sparse high-grade and 50°/55° labels, and comparing the transformer
+against an engineered-feature tree baseline. Making the network larger before those
+changes is unlikely to help.

@@ -1,12 +1,21 @@
 {
   "dataset_examples": 8766,
-  "selected_epoch": 11,
-  "early_stopped_epoch": 23,
+  "split": {
+    "strategy": "grade-stratified hold-role configuration groups",
+    "train_examples": 7020,
+    "validation_examples": 865,
+    "test_examples": 881,
+    "cross_split_duplicate_configurations": 0
+  },
+  "selected_epoch": 10,
+  "early_stopped_epoch": 22,
   "grade_scale": "V",
-  "temperature": 1.4299999475479126,
+  "angle_encoding": "continuous_scalar",
+  "hold_characteristics": ["material"],
+  "temperature": 1.3600000143051147,
   "test": {
-    "mae_v_grade_steps": 1.0287686586380005,
-    "within_one_grade": 0.7318757176399231,
-    "exact_accuracy": 0.3302646577358246
+    "mae_v_grade_steps": 1.1464245319366455,
+    "within_one_grade": 0.7003405094146729,
+    "exact_accuracy": 0.30419978499412537
   }
 }

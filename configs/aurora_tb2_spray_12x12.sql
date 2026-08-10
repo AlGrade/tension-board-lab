@@ -31,9 +31,12 @@ ORDER BY c.uuid, cs.angle;
 SELECT
     p.id AS placement_id,
     (h.x + 64.0) / 128.0 AS x,
-    (h.y - 4.0) / 136.0 AS y
+    (h.y - 4.0) / 136.0 AS y,
+    LOWER(s.name) AS material
 FROM placements AS p
 INNER JOIN holes AS h
     ON h.id = p.hole_id
+INNER JOIN sets AS s
+    ON s.id = p.set_id
 WHERE p.layout_id = 11
   AND p.set_id IN (12, 13);

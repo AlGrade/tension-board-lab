@@ -37,6 +37,7 @@ def forward_batch(model: TensionGradeTransformer, batch: dict[str, Tensor]) -> T
     return model(
         batch["placement_ids"],
         batch["roles"],
+        batch["materials"],
         batch["coordinates"],
         batch["mask"],
         batch["angles"],

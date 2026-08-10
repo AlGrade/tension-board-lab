@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -12,15 +13,16 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from .grades import v_grade_index, v_grade_span
-from .schema import HOLD_ROLES, SUPPORTED_ANGLES, RouteExample
+from .schema import HOLD_MATERIALS, HOLD_ROLES, RouteExample
 
 ROLE_TO_INDEX = {role: index for index, role in enumerate(HOLD_ROLES)}
-ANGLE_TO_INDEX = {angle: index for index, angle in enumerate(sorted(SUPPORTED_ANGLES))}
+MATERIAL_TO_INDEX = {material: index for index, material in enumerate(HOLD_MATERIALS)}
 
 
 @dataclass(frozen=True)
 class Vocabulary:
     placement_to_index: dict[str, int]
+    placement_material: dict[str, int]
     grade_labels: tuple[str, ...]
     grade_offset: int
 
@@ -28,16 +30,31 @@ class Vocabulary:
     def build(cls, examples: Sequence[RouteExample]) -> Vocabulary:
         placements = sorted({hold.placement_id for route in examples for hold in route.holds})
         placement_to_index = {placement: index + 1 for index, placement in enumerate(placements)}
+        placement_material: dict[str, int] = {}
+        for route in examples:
+            for hold in route.holds:
+                material = MATERIAL_TO_INDEX[hold.material]
+                previous_material = placement_material.setdefault(hold.placement_id, material)
+                if previous_material != material:
+                    raise ValueError(
+                        f"Inconsistent characteristics for placement {hold.placement_id}"
+                    )
         grade_indices = [v_grade_index(route.grade) for route in examples if route.grade]
         if not grade_indices:
             raise ValueError("Cannot build a training vocabulary without grades")
         grade_offset = min(grade_indices)
         labels = v_grade_span(grade_offset, max(grade_indices))
-        return cls(placement_to_index, labels, grade_offset)
+        return cls(
+            placement_to_index,
+            placement_material,
+            labels,
+            grade_offset,
+        )
 
     def as_dict(self) -> dict[str, object]:
         return {
             "placement_to_index": self.placement_to_index,
+            "placement_material": self.placement_material,
             "grade_labels": list(self.grade_labels),
             "grade_offset": self.grade_offset,
         }
@@ -46,6 +63,7 @@ class Vocabulary:
     def from_dict(cls, raw: dict[str, object]) -> Vocabulary:
         return cls(
             placement_to_index={str(k): int(v) for k, v in dict(raw["placement_to_index"]).items()},
+            placement_material={str(k): int(v) for k, v in dict(raw["placement_material"]).items()},
             grade_labels=tuple(str(value) for value in raw["grade_labels"]),
             grade_offset=int(raw["grade_offset"]),
         )
@@ -68,18 +86,56 @@ def split_examples(
     train_fraction: float = 0.8,
     validation_fraction: float = 0.1,
 ) -> tuple[list[RouteExample], list[RouteExample], list[RouteExample]]:
-    """Split deterministically by group, keeping mirrors/variants together."""
+    """Split deterministic, grade-stratified hold configurations as indivisible groups.
+
+    UUIDs are not trusted as group identifiers because community members can save
+    the same hold configuration under another name. All angles and exact copies of
+    a hold-role configuration therefore remain in one split.
+    """
 
     if train_fraction <= 0 or validation_fraction <= 0 or train_fraction + validation_fraction >= 1:
         raise ValueError("Split fractions must leave non-empty train, validation, and test ranges")
-    splits: tuple[list[RouteExample], list[RouteExample], list[RouteExample]] = ([], [], [])
-    train_cutoff = int(train_fraction * 10_000)
-    validation_cutoff = int((train_fraction + validation_fraction) * 10_000)
+    groups: dict[str, list[RouteExample]] = defaultdict(list)
     for example in examples:
-        group = example.group_id or example.climb_id
-        bucket = int.from_bytes(hashlib.sha256(group.encode()).digest()[:8], "big") % 10_000
-        split_index = 0 if bucket < train_cutoff else 1 if bucket < validation_cutoff else 2
-        splits[split_index].append(example)
+        signature = "|".join(
+            f"{hold.placement_id}:{hold.role}"
+            for hold in sorted(example.holds, key=lambda hold: (hold.placement_id, hold.role))
+        )
+        groups[signature].append(example)
+
+    strata: dict[int, list[tuple[str, list[RouteExample]]]] = defaultdict(list)
+    for signature, group in groups.items():
+        grade_indices = sorted(v_grade_index(example.grade) for example in group if example.grade)
+        if not grade_indices:
+            raise ValueError("Splitting training data requires grades")
+        median_grade = grade_indices[len(grade_indices) // 2]
+        strata[median_grade].append((signature, group))
+
+    splits: tuple[list[RouteExample], list[RouteExample], list[RouteExample]] = ([], [], [])
+    test_fraction = 1.0 - train_fraction - validation_fraction
+    for stratum_groups in strata.values():
+        ordered = sorted(
+            stratum_groups,
+            key=lambda item: hashlib.sha256(item[0].encode()).digest(),
+        )
+        group_count = len(ordered)
+        if group_count < 3:
+            validation_count = test_count = 0
+        else:
+            validation_count = max(1, round(group_count * validation_fraction))
+            test_count = max(1, round(group_count * test_fraction))
+            while validation_count + test_count >= group_count:
+                if validation_count >= test_count and validation_count > 1:
+                    validation_count -= 1
+                elif test_count > 1:
+                    test_count -= 1
+                else:
+                    break
+        training_count = group_count - validation_count - test_count
+        boundaries = (training_count, training_count + validation_count)
+        for index, (_, group) in enumerate(ordered):
+            split_index = 0 if index < boundaries[0] else 1 if index < boundaries[1] else 2
+            splits[split_index].extend(group)
     if any(not split for split in splits):
         raise ValueError("A split is empty; provide more climbs or change the split fractions")
     return splits
@@ -95,26 +151,29 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
     batch_size = len(batch)
     placement_ids = torch.zeros((batch_size, max_holds), dtype=torch.long)
     roles = torch.zeros((batch_size, max_holds), dtype=torch.long)
+    materials = torch.zeros((batch_size, max_holds), dtype=torch.long)
     coordinates = torch.zeros((batch_size, max_holds, 2), dtype=torch.float32)
     mask = torch.zeros((batch_size, max_holds), dtype=torch.bool)
-    angles = torch.zeros(batch_size, dtype=torch.long)
+    angles = torch.zeros(batch_size, dtype=torch.float32)
     labels = torch.full((batch_size,), -1, dtype=torch.long)
     weights = torch.ones(batch_size, dtype=torch.float32)
 
     for row, example in enumerate(batch):
-        angles[row] = ANGLE_TO_INDEX[example.angle]
+        angles[row] = float(example.angle)
         weights[row] = _sample_weight(example)
         if example.grade is not None:
             labels[row] = v_grade_index(example.grade) - vocabulary.grade_offset
         for column, hold in enumerate(example.holds):
             placement_ids[row, column] = vocabulary.placement_to_index.get(hold.placement_id, 0)
             roles[row, column] = ROLE_TO_INDEX[hold.role]
+            materials[row, column] = vocabulary.placement_material.get(hold.placement_id, 0)
             coordinates[row, column] = torch.tensor((hold.x, hold.y), dtype=torch.float32)
             mask[row, column] = True
 
     return {
         "placement_ids": placement_ids,
         "roles": roles,
+        "materials": materials,
         "coordinates": coordinates,
         "mask": mask,
         "angles": angles,

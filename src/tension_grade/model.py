@@ -15,7 +15,7 @@ class ModelConfig:
     num_placements: int
     num_grades: int
     num_roles: int = 4
-    num_angles: int = 5
+    num_materials: int = 3
     width: int = 192
     heads: int = 8
     layers: int = 6
@@ -86,7 +86,10 @@ class TensionGradeTransformer(nn.Module):
         self.config = config
         self.placement_embedding = nn.Embedding(config.num_placements + 1, config.width)
         self.role_embedding = nn.Embedding(config.num_roles, config.width)
-        self.angle_embedding = nn.Embedding(config.num_angles, config.width)
+        self.material_embedding = nn.Embedding(config.num_materials, config.width)
+        self.angle_projection = nn.Sequential(
+            nn.Linear(1, config.width), nn.GELU(), nn.Linear(config.width, config.width)
+        )
         self.coordinate_embedding = nn.Sequential(
             nn.Linear(2, config.width), nn.GELU(), nn.Linear(config.width, config.width)
         )
@@ -107,14 +110,17 @@ class TensionGradeTransformer(nn.Module):
         self,
         placement_ids: Tensor,
         roles: Tensor,
+        materials: Tensor,
         coordinates: Tensor,
         mask: Tensor,
         angles: Tensor,
     ) -> Tensor:
-        angle_context = self.angle_embedding(angles).unsqueeze(1)
+        normalized_angle = ((angles.float() - 45.0) / 10.0).unsqueeze(-1)
+        angle_context = self.angle_projection(normalized_angle).unsqueeze(1)
         nodes = (
             self.placement_embedding(placement_ids)
             + self.role_embedding(roles)
+            + self.material_embedding(materials)
             + self.coordinate_embedding(coordinates)
             + angle_context
         )

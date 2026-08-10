@@ -77,7 +77,9 @@ def _role_lookup(connection: sqlite3.Connection) -> dict[int, str]:
 
 
 def _parse_frame(
-    frame: str, roles: dict[int, str], placements: dict[str, tuple[float, float]]
+    frame: str,
+    roles: dict[int, str],
+    placements: dict[str, tuple[float, float, str]],
 ) -> tuple[HoldNode, ...]:
     holds: list[HoldNode] = []
     for match in _FRAME_TOKEN.finditer(frame):
@@ -85,8 +87,8 @@ def _parse_frame(
         role_id = int(match.group("role"))
         if placement not in placements or role_id not in roles:
             continue
-        x, y = placements[placement]
-        holds.append(HoldNode(placement, roles[role_id], x, y))
+        x, y, material = placements[placement]
+        holds.append(HoldNode(placement, roles[role_id], x, y, material))
     return tuple(holds)
 
 
@@ -108,7 +110,11 @@ def import_with_query(database: Path, query_file: Path, output: Path) -> int:
     connection.row_factory = sqlite3.Row
     roles = _role_lookup(connection)
     placements = {
-        str(row["placement_id"]): (float(row["x"]), float(row["y"]))
+        str(row["placement_id"]): (
+            float(row["x"]),
+            float(row["y"]),
+            str(row["material"]).strip().lower(),
+        )
         for row in connection.execute(parts[1])
     }
     examples: list[RouteExample] = []

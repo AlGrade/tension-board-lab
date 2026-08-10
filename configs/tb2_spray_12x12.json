@@ -3,7 +3,9 @@
   "layout": "Spray",
   "size": "12x12",
   "angles": [35, 40, 45, 50, 55],
+  "angle_encoding": "continuous_scalar",
   "grade_scale": "V",
   "target": "angle-specific community consensus grade",
-  "roles": ["start", "hand", "foot", "finish"]
+  "roles": ["start", "hand", "foot", "finish"],
+  "hold_characteristics": ["material"]
 }
