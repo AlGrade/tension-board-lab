@@ -37,7 +37,6 @@ def forward_batch(model: TensionGradeTransformer, batch: dict[str, Tensor]) -> T
     return model(
         batch["placement_ids"],
         batch["roles"],
-        batch["materials"],
         batch["coordinates"],
         batch["mask"],
         batch["angles"],
@@ -81,7 +80,7 @@ def metrics(logits: Tensor, labels: Tensor, temperature: float = 1.0) -> dict[st
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset", type=Path, help="Canonical JSONL dataset")
-    parser.add_argument("--output", type=Path, default=Path("checkpoints/tb2_spray_12x12.pt"))
+    parser.add_argument("--output", type=Path, default=Path("checkpoints/tb2_mirror_12x12.pt"))
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
@@ -201,7 +200,7 @@ def main() -> None:
             "test_metrics": test_metrics,
             "scope": {
                 "board": "Tension Board 2",
-                "layout": "Spray",
+                "layout": "Mirror",
                 "size": "12x12",
                 "angles": [35, 40, 45, 50, 55],
                 "grade_scale": "V",

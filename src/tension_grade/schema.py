@@ -12,7 +12,6 @@ from .grades import normalize_v_grade
 
 SUPPORTED_ANGLES = frozenset({35, 40, 45, 50, 55})
 HOLD_ROLES = ("start", "hand", "foot", "finish")
-HOLD_MATERIALS = ("unknown", "wood", "plastic")
 
 
 @dataclass(frozen=True)
@@ -21,22 +20,17 @@ class HoldNode:
     role: str
     x: float
     y: float
-    material: str = "unknown"
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> HoldNode:
         role = str(raw["role"]).strip().lower()
         if role not in HOLD_ROLES:
             raise ValueError(f"Unknown hold role: {role!r}")
-        material = str(raw.get("material", "unknown")).strip().lower()
-        if material not in HOLD_MATERIALS:
-            raise ValueError(f"Unknown hold material: {material!r}")
         return cls(
             placement_id=str(raw["placement_id"]),
             role=role,
             x=float(raw["x"]),
             y=float(raw["y"]),
-            material=material,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -45,7 +39,6 @@ class HoldNode:
             "role": self.role,
             "x": self.x,
             "y": self.y,
-            "material": self.material,
         }
 
 

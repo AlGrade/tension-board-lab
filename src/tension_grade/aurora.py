@@ -77,9 +77,7 @@ def _role_lookup(connection: sqlite3.Connection) -> dict[int, str]:
 
 
 def _parse_frame(
-    frame: str,
-    roles: dict[int, str],
-    placements: dict[str, tuple[float, float, str]],
+    frame: str, roles: dict[int, str], placements: dict[str, tuple[float, float]]
 ) -> tuple[HoldNode, ...]:
     holds: list[HoldNode] = []
     for match in _FRAME_TOKEN.finditer(frame):
@@ -87,8 +85,8 @@ def _parse_frame(
         role_id = int(match.group("role"))
         if placement not in placements or role_id not in roles:
             continue
-        x, y, material = placements[placement]
-        holds.append(HoldNode(placement, roles[role_id], x, y, material))
+        x, y = placements[placement]
+        holds.append(HoldNode(placement, roles[role_id], x, y))
     return tuple(holds)
 
 
@@ -110,11 +108,7 @@ def import_with_query(database: Path, query_file: Path, output: Path) -> int:
     connection.row_factory = sqlite3.Row
     roles = _role_lookup(connection)
     placements = {
-        str(row["placement_id"]): (
-            float(row["x"]),
-            float(row["y"]),
-            str(row["material"]).strip().lower(),
-        )
+        str(row["placement_id"]): (float(row["x"]), float(row["y"]))
         for row in connection.execute(parts[1])
     }
     examples: list[RouteExample] = []
@@ -148,7 +142,9 @@ def import_main() -> None:
     parser = argparse.ArgumentParser(description="Import TB2 routes using an audited SQL mapping")
     parser.add_argument("database", type=Path)
     parser.add_argument("--query", type=Path, required=True)
-    parser.add_argument("--output", type=Path, default=Path("data/processed/tb2_spray_12x12.jsonl"))
+    parser.add_argument(
+        "--output", type=Path, default=Path("data/processed/tb2_mirror_12x12.jsonl")
+    )
     args = parser.parse_args()
     count = import_with_query(args.database, args.query, args.output)
     print(json.dumps({"examples": count, "output": str(args.output)}))

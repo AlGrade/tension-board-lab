@@ -17,7 +17,7 @@ INNER JOIN climb_stats AS cs
     ON cs.climb_uuid = c.uuid
 INNER JOIN difficulty_grades AS dg
     ON dg.difficulty = CAST(ROUND(cs.display_difficulty) AS INTEGER)
-WHERE c.layout_id = 11
+WHERE c.layout_id = 10
   AND c.frames_count = 1
   AND c.is_listed = 1
   AND c.is_draft = 0
@@ -26,17 +26,14 @@ WHERE c.layout_id = 11
 ORDER BY c.uuid, cs.angle;
 
 -- placements
--- Normalize the full 12x12 Spray coordinate extent to [0, 1]. Sets 12 and 13
+-- Normalize the full 12x12 Mirror coordinate extent to [0, 1]. Sets 12 and 13
 -- are respectively the wood and plastic sets for product size 6.
 SELECT
     p.id AS placement_id,
     (h.x + 64.0) / 128.0 AS x,
-    (h.y - 4.0) / 136.0 AS y,
-    LOWER(s.name) AS material
+    (h.y - 4.0) / 136.0 AS y
 FROM placements AS p
 INNER JOIN holes AS h
     ON h.id = p.hole_id
-INNER JOIN sets AS s
-    ON s.id = p.set_id
-WHERE p.layout_id = 11
+WHERE p.layout_id = 10
   AND p.set_id IN (12, 13);

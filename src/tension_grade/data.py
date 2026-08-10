@@ -13,16 +13,15 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from .grades import v_grade_index, v_grade_span
-from .schema import HOLD_MATERIALS, HOLD_ROLES, RouteExample
+from .schema import HOLD_ROLES, SUPPORTED_ANGLES, RouteExample
 
 ROLE_TO_INDEX = {role: index for index, role in enumerate(HOLD_ROLES)}
-MATERIAL_TO_INDEX = {material: index for index, material in enumerate(HOLD_MATERIALS)}
+ANGLE_TO_INDEX = {angle: index for index, angle in enumerate(sorted(SUPPORTED_ANGLES))}
 
 
 @dataclass(frozen=True)
 class Vocabulary:
     placement_to_index: dict[str, int]
-    placement_material: dict[str, int]
     grade_labels: tuple[str, ...]
     grade_offset: int
 
@@ -30,31 +29,16 @@ class Vocabulary:
     def build(cls, examples: Sequence[RouteExample]) -> Vocabulary:
         placements = sorted({hold.placement_id for route in examples for hold in route.holds})
         placement_to_index = {placement: index + 1 for index, placement in enumerate(placements)}
-        placement_material: dict[str, int] = {}
-        for route in examples:
-            for hold in route.holds:
-                material = MATERIAL_TO_INDEX[hold.material]
-                previous_material = placement_material.setdefault(hold.placement_id, material)
-                if previous_material != material:
-                    raise ValueError(
-                        f"Inconsistent characteristics for placement {hold.placement_id}"
-                    )
         grade_indices = [v_grade_index(route.grade) for route in examples if route.grade]
         if not grade_indices:
             raise ValueError("Cannot build a training vocabulary without grades")
         grade_offset = min(grade_indices)
         labels = v_grade_span(grade_offset, max(grade_indices))
-        return cls(
-            placement_to_index,
-            placement_material,
-            labels,
-            grade_offset,
-        )
+        return cls(placement_to_index, labels, grade_offset)
 
     def as_dict(self) -> dict[str, object]:
         return {
             "placement_to_index": self.placement_to_index,
-            "placement_material": self.placement_material,
             "grade_labels": list(self.grade_labels),
             "grade_offset": self.grade_offset,
         }
@@ -63,7 +47,6 @@ class Vocabulary:
     def from_dict(cls, raw: dict[str, object]) -> Vocabulary:
         return cls(
             placement_to_index={str(k): int(v) for k, v in dict(raw["placement_to_index"]).items()},
-            placement_material={str(k): int(v) for k, v in dict(raw["placement_material"]).items()},
             grade_labels=tuple(str(value) for value in raw["grade_labels"]),
             grade_offset=int(raw["grade_offset"]),
         )
@@ -151,29 +134,26 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
     batch_size = len(batch)
     placement_ids = torch.zeros((batch_size, max_holds), dtype=torch.long)
     roles = torch.zeros((batch_size, max_holds), dtype=torch.long)
-    materials = torch.zeros((batch_size, max_holds), dtype=torch.long)
     coordinates = torch.zeros((batch_size, max_holds, 2), dtype=torch.float32)
     mask = torch.zeros((batch_size, max_holds), dtype=torch.bool)
-    angles = torch.zeros(batch_size, dtype=torch.float32)
+    angles = torch.zeros(batch_size, dtype=torch.long)
     labels = torch.full((batch_size,), -1, dtype=torch.long)
     weights = torch.ones(batch_size, dtype=torch.float32)
 
     for row, example in enumerate(batch):
-        angles[row] = float(example.angle)
+        angles[row] = ANGLE_TO_INDEX[example.angle]
         weights[row] = _sample_weight(example)
         if example.grade is not None:
             labels[row] = v_grade_index(example.grade) - vocabulary.grade_offset
         for column, hold in enumerate(example.holds):
             placement_ids[row, column] = vocabulary.placement_to_index.get(hold.placement_id, 0)
             roles[row, column] = ROLE_TO_INDEX[hold.role]
-            materials[row, column] = vocabulary.placement_material.get(hold.placement_id, 0)
             coordinates[row, column] = torch.tensor((hold.x, hold.y), dtype=torch.float32)
             mask[row, column] = True
 
     return {
         "placement_ids": placement_ids,
         "roles": roles,
-        "materials": materials,
         "coordinates": coordinates,
         "mask": mask,
         "angles": angles,

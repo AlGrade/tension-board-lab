@@ -1,15 +1,15 @@
 {
-  "climb_id": "new-problem",
+  "climb_id": "new-mirror-problem",
   "angle": 45,
   "holds": [
-    {"placement_id": "918", "role": "foot", "x": 0.5, "y": 0.0588},
-    {"placement_id": "919", "role": "foot", "x": 0.5, "y": 0.1765},
-    {"placement_id": "950", "role": "hand", "x": 0.625, "y": 0.4706},
-    {"placement_id": "953", "role": "hand", "x": 0.625, "y": 0.7059},
-    {"placement_id": "1130", "role": "foot", "x": 0.3438, "y": 0.4412},
-    {"placement_id": "1141", "role": "finish", "x": 0.375, "y": 1.0},
-    {"placement_id": "1179", "role": "start", "x": 0.5313, "y": 0.3235},
-    {"placement_id": "1195", "role": "hand", "x": 0.5625, "y": 0.8824},
-    {"placement_id": "1211", "role": "hand", "x": 0.6563, "y": 0.5588}
+    {"placement_id": "326", "role": "finish", "x": 0.4375, "y": 1.0},
+    {"placement_id": "359", "role": "foot", "x": 0.28125, "y": 0.382353},
+    {"placement_id": "428", "role": "foot", "x": 0.53125, "y": 0.029412},
+    {"placement_id": "433", "role": "hand", "x": 0.53125, "y": 0.794118},
+    {"placement_id": "440", "role": "hand", "x": 0.5625, "y": 0.529412},
+    {"placement_id": "446", "role": "start", "x": 0.59375, "y": 0.264706},
+    {"placement_id": "479", "role": "hand", "x": 0.71875, "y": 0.558824},
+    {"placement_id": "482", "role": "hand", "x": 0.71875, "y": 0.852941},
+    {"placement_id": "494", "role": "start", "x": 0.78125, "y": 0.323529}
   ]
 }

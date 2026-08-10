@@ -9,10 +9,9 @@ def test_model_output_and_loss() -> None:
     logits = model(
         placement_ids=torch.tensor([[1, 2, 3, 0], [4, 5, 0, 0]]),
         roles=torch.tensor([[0, 1, 3, 0], [0, 3, 0, 0]]),
-        materials=torch.tensor([[1, 2, 1, 0], [2, 1, 0, 0]]),
         coordinates=torch.rand(2, 4, 2),
         mask=torch.tensor([[True, True, True, False], [True, True, False, False]]),
-        angles=torch.tensor([35.0, 55.0]),
+        angles=torch.tensor([0, 4]),
     )
     assert logits.shape == (2, 8)
     loss = grade_loss(logits, torch.tensor([2, 6]), torch.ones(2))

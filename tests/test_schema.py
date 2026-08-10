@@ -14,14 +14,12 @@ def route_data() -> dict:
                 "role": "start",
                 "x": 0.2,
                 "y": 0.1,
-                "material": "wood",
             },
             {
                 "placement_id": "99",
                 "role": "finish",
                 "x": 0.8,
                 "y": 0.9,
-                "material": "plastic",
             },
         ],
     }
@@ -31,7 +29,6 @@ def test_route_is_normalized() -> None:
     route = RouteExample.from_dict(route_data(), require_grade=True)
     assert route.grade == "V7"
     assert route.angle == 40
-    assert route.holds[0].material == "wood"
 
 
 def test_unsupported_angle_is_rejected() -> None:
