@@ -5,7 +5,7 @@ SELECT
     cs.angle AS angle,
     CASE
         WHEN INSTR(dg.boulder_name, '/') > 0
-            THEN SUBSTR(dg.boulder_name, 1, INSTR(dg.boulder_name, '/') - 1)
+            THEN SUBSTR(dg.boulder_name, INSTR(dg.boulder_name, '/') + 1)
         ELSE dg.boulder_name
     END AS grade,
     c.frames AS frames,

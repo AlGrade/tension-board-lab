@@ -1,4 +1,4 @@
-"""Predict a Font grade and calibrated confidence from one canonical route JSON file."""
+"""Predict a V grade and calibrated confidence from one canonical route JSON file."""
 
 from __future__ import annotations
 

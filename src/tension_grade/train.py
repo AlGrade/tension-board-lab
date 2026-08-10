@@ -203,7 +203,7 @@ def main() -> None:
                 "layout": "Spray",
                 "size": "12x12",
                 "angles": [35, 40, 45, 50, 55],
-                "grade_scale": "Font",
+                "grade_scale": "V",
             },
             "training_args": vars(args)
             | {"dataset": str(args.dataset), "output": str(args.output)},

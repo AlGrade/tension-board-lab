@@ -11,7 +11,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from .grades import font_grade_index, font_grade_span
+from .grades import v_grade_index, v_grade_span
 from .schema import HOLD_ROLES, SUPPORTED_ANGLES, RouteExample
 
 ROLE_TO_INDEX = {role: index for index, role in enumerate(HOLD_ROLES)}
@@ -28,11 +28,11 @@ class Vocabulary:
     def build(cls, examples: Sequence[RouteExample]) -> Vocabulary:
         placements = sorted({hold.placement_id for route in examples for hold in route.holds})
         placement_to_index = {placement: index + 1 for index, placement in enumerate(placements)}
-        grade_indices = [font_grade_index(route.grade) for route in examples if route.grade]
+        grade_indices = [v_grade_index(route.grade) for route in examples if route.grade]
         if not grade_indices:
             raise ValueError("Cannot build a training vocabulary without grades")
         grade_offset = min(grade_indices)
-        labels = font_grade_span(grade_offset, max(grade_indices))
+        labels = v_grade_span(grade_offset, max(grade_indices))
         return cls(placement_to_index, labels, grade_offset)
 
     def as_dict(self) -> dict[str, object]:
@@ -105,7 +105,7 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
         angles[row] = ANGLE_TO_INDEX[example.angle]
         weights[row] = _sample_weight(example)
         if example.grade is not None:
-            labels[row] = font_grade_index(example.grade) - vocabulary.grade_offset
+            labels[row] = v_grade_index(example.grade) - vocabulary.grade_offset
         for column, hold in enumerate(example.holds):
             placement_ids[row, column] = vocabulary.placement_to_index.get(hold.placement_id, 0)
             roles[row, column] = ROLE_TO_INDEX[hold.role]

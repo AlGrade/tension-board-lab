@@ -7,7 +7,7 @@ def route_data() -> dict:
     return {
         "climb_id": "42",
         "angle": 40,
-        "grade": "7a+",
+        "grade": "v7",
         "holds": [
             {"placement_id": "10", "role": "start", "x": 0.2, "y": 0.1},
             {"placement_id": "99", "role": "finish", "x": 0.8, "y": 0.9},
@@ -17,7 +17,7 @@ def route_data() -> dict:
 
 def test_route_is_normalized() -> None:
     route = RouteExample.from_dict(route_data(), require_grade=True)
-    assert route.grade == "7A+"
+    assert route.grade == "V7"
     assert route.angle == 40
 
 

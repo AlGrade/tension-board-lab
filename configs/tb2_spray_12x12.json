@@ -3,7 +3,7 @@
   "layout": "Spray",
   "size": "12x12",
   "angles": [35, 40, 45, 50, 55],
-  "grade_scale": "Font",
+  "grade_scale": "V",
   "target": "angle-specific community consensus grade",
   "roles": ["start", "hand", "foot", "finish"]
 }

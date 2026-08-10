@@ -1,10 +1,12 @@
 {
   "dataset_examples": 8766,
-  "selected_epoch": 21,
-  "temperature": 1.2799999713897705,
+  "selected_epoch": 11,
+  "early_stopped_epoch": 23,
+  "grade_scale": "V",
+  "temperature": 1.4299999475479126,
   "test": {
-    "mae_font_grade_steps": 1.6421173810958862,
-    "within_one_grade": 0.5258918404579163,
-    "exact_accuracy": 0.20943613350391388
+    "mae_v_grade_steps": 1.0287686586380005,
+    "within_one_grade": 0.7318757176399231,
+    "exact_accuracy": 0.3302646577358246
   }
 }

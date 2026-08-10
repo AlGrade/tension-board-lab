@@ -1,6 +1,6 @@
 # Tension Grade Predictor
 
-A board-aware graph transformer that predicts an angle-specific Font grade for
+A board-aware graph transformer that predicts an angle-specific V grade for
 Tension Board 2 Spray, 12x12, at 35°, 40°, 45°, 50°, or 55°.
 
 The prediction contract is intentionally small:
@@ -25,7 +25,7 @@ Each selected hold is a graph node with four kinds of information:
 Six transformer blocks perform attention between every selected hold. Each attention
 head receives a learned geometric bias built from horizontal distance, vertical
 distance, absolute distance, and direction. Attention pooling produces one route
-representation, and an ordinal-aware classification head predicts the Font grade.
+representation, and an ordinal-aware classification head predicts the V grade.
 
 The default model is about 192 units wide with eight attention heads and six layers.
 This is deliberately substantial for the dataset, but still practical to train on
@@ -115,7 +115,7 @@ grade field. See `examples/route.json` for the canonical shape.
 tension-predict checkpoints/tb2_spray_12x12.pt examples/route.json
 ```
 
-Only the predicted Font grade and calibrated confidence are printed.
+Only the predicted V grade and calibrated confidence are printed.
 
 ## Test
 
@@ -125,19 +125,19 @@ ruff check .
 ```
 
 The first meaningful success criterion is held-out mean absolute error below one
-Font grade step, followed by confidence calibration and a separate benchmark-climb
+V-grade step, followed by confidence calibration and a separate benchmark-climb
 evaluation.
 
 ## Current checkpoint
 
 `checkpoints/tb2_spray_12x12.pt` was trained on the initial 8,766-example public
-dataset. Early stopping selected epoch 21 from a 40-epoch run. Its strictly held-out
-test results are:
+dataset with native Aurora V-grade labels. Early stopping ended the 40-epoch run at
+epoch 23 and selected epoch 11. Its strictly held-out test results are:
 
-- mean absolute error: 1.6421 Font-grade steps;
-- within one Font-grade step: 52.59%;
-- exact-grade accuracy: 20.94%;
-- confidence temperature: 1.28.
+- mean absolute error: 1.0288 V-grade steps;
+- within one V-grade step: 73.19%;
+- exact-grade accuracy: 33.03%;
+- confidence temperature: 1.43.
 
 This is an honest first checkpoint, not a production benchmark. The most promising
 next gains are adding hold-shape/material/orientation metadata, increasing the sparse

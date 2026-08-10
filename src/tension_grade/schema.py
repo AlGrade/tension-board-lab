@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .grades import normalize_font_grade
+from .grades import normalize_v_grade
 
 SUPPORTED_ANGLES = frozenset({35, 40, 45, 50, 55})
 HOLD_ROLES = ("start", "hand", "foot", "finish")
@@ -65,7 +65,7 @@ class RouteExample:
         grade_raw = raw.get("grade")
         if require_grade and grade_raw is None:
             raise ValueError("Training examples require a grade")
-        grade = normalize_font_grade(str(grade_raw)) if grade_raw is not None else None
+        grade = normalize_v_grade(str(grade_raw)) if grade_raw is not None else None
         return cls(
             climb_id=str(raw.get("climb_id", "prediction")),
             angle=angle,
