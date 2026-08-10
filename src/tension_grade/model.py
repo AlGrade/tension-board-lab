@@ -12,10 +12,12 @@ from torch import Tensor, nn
 
 @dataclass(frozen=True)
 class ModelConfig:
-    num_placements: int
+    num_hold_families: int
+    num_variants: int
     num_grades: int
     num_roles: int = 4
-    num_angles: int = 5
+    num_materials: int = 2
+    num_layouts: int = 2
     width: int = 192
     heads: int = 8
     layers: int = 6
@@ -38,7 +40,7 @@ class GraphAttentionBlock(nn.Module):
         self.norm_attention = nn.LayerNorm(config.width)
         self.qkv = nn.Linear(config.width, config.width * 3, bias=False)
         self.geometry_bias = nn.Sequential(
-            nn.Linear(6, config.width // 2),
+            nn.Linear(8, config.width // 2),
             nn.GELU(),
             nn.Linear(config.width // 2, config.heads),
         )
@@ -55,7 +57,7 @@ class GraphAttentionBlock(nn.Module):
             nn.Dropout(config.dropout),
         )
 
-    def forward(self, nodes: Tensor, coordinates: Tensor, mask: Tensor) -> Tensor:
+    def forward(self, nodes: Tensor, coordinates: Tensor, mask: Tensor, angles: Tensor) -> Tensor:
         batch, node_count, width = nodes.shape
         normalized = self.norm_attention(nodes)
         qkv = self.qkv(normalized).view(batch, node_count, 3, self.heads, self.head_width)
@@ -67,7 +69,22 @@ class GraphAttentionBlock(nn.Module):
         delta = coordinates[:, :, None, :] - coordinates[:, None, :, :]
         dx, dy = delta.unbind(dim=-1)
         distance = torch.sqrt(dx.square() + dy.square() + 1e-8)
-        geometry = torch.stack((dx, dy, dx.abs(), dy.abs(), distance, dy.sign()), dim=-1)
+        radians = torch.deg2rad(angles).view(-1, 1, 1)
+        vertical_gain = dy * radians.cos()
+        overhang_depth = dy * radians.sin()
+        geometry = torch.stack(
+            (
+                dx,
+                dy,
+                dx.abs(),
+                dy.abs(),
+                distance,
+                vertical_gain,
+                overhang_depth,
+                dy.sign(),
+            ),
+            dim=-1,
+        )
         bias = self.geometry_bias(geometry).permute(0, 3, 1, 2)
 
         scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(self.head_width)
@@ -84,9 +101,17 @@ class TensionGradeTransformer(nn.Module):
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
         self.config = config
-        self.placement_embedding = nn.Embedding(config.num_placements + 1, config.width)
+        self.hold_family_embedding = nn.Embedding(config.num_hold_families + 1, config.width)
+        self.variant_embedding = nn.Embedding(config.num_variants + 1, config.width)
+        self.material_embedding = nn.Embedding(config.num_materials, config.width)
         self.role_embedding = nn.Embedding(config.num_roles, config.width)
-        self.angle_embedding = nn.Embedding(config.num_angles, config.width)
+        self.layout_embedding = nn.Embedding(config.num_layouts, config.width)
+        self.orientation_embedding = nn.Sequential(
+            nn.Linear(2, config.width), nn.GELU(), nn.Linear(config.width, config.width)
+        )
+        self.angle_embedding = nn.Sequential(
+            nn.Linear(3, config.width), nn.GELU(), nn.Linear(config.width, config.width)
+        )
         self.coordinate_embedding = nn.Sequential(
             nn.Linear(2, config.width), nn.GELU(), nn.Linear(config.width, config.width)
         )
@@ -105,26 +130,35 @@ class TensionGradeTransformer(nn.Module):
 
     def forward(
         self,
-        placement_ids: Tensor,
+        hold_family_ids: Tensor,
+        variants: Tensor,
+        materials: Tensor,
+        orientations: Tensor,
         roles: Tensor,
         coordinates: Tensor,
         mask: Tensor,
         angles: Tensor,
+        layouts: Tensor,
     ) -> Tensor:
-        angle_context = self.angle_embedding(angles).unsqueeze(1)
+        radians = torch.deg2rad(angles)
+        angle_features = torch.stack((angles / 90.0, radians.sin(), radians.cos()), dim=-1)
+        global_context = self.angle_embedding(angle_features) + self.layout_embedding(layouts)
         nodes = (
-            self.placement_embedding(placement_ids)
+            self.hold_family_embedding(hold_family_ids)
+            + self.variant_embedding(variants)
+            + self.material_embedding(materials)
+            + self.orientation_embedding(orientations)
             + self.role_embedding(roles)
             + self.coordinate_embedding(coordinates)
-            + angle_context
+            + global_context.unsqueeze(1)
         )
         nodes = self.input_norm(nodes) * mask.unsqueeze(-1)
         for block in self.blocks:
-            nodes = block(nodes, coordinates, mask)
+            nodes = block(nodes, coordinates, mask, angles)
         pool_scores = self.pool_gate(nodes).squeeze(-1)
         pool_scores = pool_scores.masked_fill(~mask, torch.finfo(pool_scores.dtype).min)
         pooled = (pool_scores.softmax(dim=-1).unsqueeze(-1) * nodes).sum(dim=1)
-        return self.head(pooled + angle_context.squeeze(1))
+        return self.head(pooled + global_context)
 
 
 def grade_loss(

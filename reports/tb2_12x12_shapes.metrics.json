@@ -1,0 +1,84 @@
+{
+  "dataset_examples": 21809,
+  "dataset_layouts": {
+    "mirror": 13043,
+    "spray": 8766
+  },
+  "split": {
+    "strategy": "grade-stratified shape/orientation configuration groups with Mirror reflection canonicalization",
+    "train_examples": 17443,
+    "validation_examples": 2166,
+    "test_examples": 2200,
+    "train_groups": 12272,
+    "validation_groups": 1535,
+    "test_groups": 1533,
+    "cross_split_duplicate_configurations": 0
+  },
+  "model": {
+    "selected_epoch": 13,
+    "early_stopped_epoch": 25,
+    "grade_scale": "V",
+    "angle_encoding": "continuous degrees plus sine/cosine",
+    "placement_id_is_model_input": false,
+    "hold_features": [
+      "family",
+      "variant",
+      "material",
+      "orientation",
+      "coordinates"
+    ],
+    "temperature": 1.2999999523162842
+  },
+  "test": {
+    "examples": 2200,
+    "mae_v_grade_steps": 1.045454502105713,
+    "within_one_grade": 0.7372727394104004,
+    "exact_accuracy": 0.307272732257843,
+    "by_layout": {
+      "mirror": {
+        "examples": 1271,
+        "mae_v_grade_steps": 1.060582160949707,
+        "within_one_grade": 0.7269866466522217,
+        "exact_accuracy": 0.30999213457107544
+      },
+      "spray": {
+        "examples": 929,
+        "mae_v_grade_steps": 1.0247578620910645,
+        "within_one_grade": 0.7513455152511597,
+        "exact_accuracy": 0.30355221033096313
+      }
+    },
+    "by_angle": {
+      "35": {
+        "examples": 246,
+        "mae_v_grade_steps": 0.8943089246749878,
+        "within_one_grade": 0.7886179089546204,
+        "exact_accuracy": 0.35772356390953064
+      },
+      "40": {
+        "examples": 1228,
+        "mae_v_grade_steps": 1.0203583240509033,
+        "within_one_grade": 0.7475569844245911,
+        "exact_accuracy": 0.319218248128891
+      },
+      "45": {
+        "examples": 495,
+        "mae_v_grade_steps": 1.1050505638122559,
+        "within_one_grade": 0.7151514887809753,
+        "exact_accuracy": 0.2888889014720917
+      },
+      "50": {
+        "examples": 201,
+        "mae_v_grade_steps": 1.2437810897827148,
+        "within_one_grade": 0.6716417670249939,
+        "exact_accuracy": 0.20398010313510895
+      },
+      "55": {
+        "examples": 30,
+        "mae_v_grade_steps": 1.0,
+        "within_one_grade": 0.699999988079071,
+        "exact_accuracy": 0.4000000059604645
+      }
+    }
+  }
+}

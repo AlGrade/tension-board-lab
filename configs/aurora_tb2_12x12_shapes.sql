@@ -1,7 +1,13 @@
--- One row per climb and angle. Aurora's display_difficulty is already the
--- benchmark override (when present) or the rounded community average.
+-- One row per listed TB2 climb and angle across the Mirror and Spray layouts.
+-- Aurora's display_difficulty is the benchmark override (when present) or the
+-- rounded angle-specific community average.
 SELECT
     c.uuid AS climb_id,
+    c.layout_id AS layout_id,
+    CASE c.layout_id
+        WHEN 10 THEN 'mirror'
+        WHEN 11 THEN 'spray'
+    END AS layout,
     cs.angle AS angle,
     CASE
         WHEN INSTR(dg.boulder_name, '/') > 0
@@ -17,23 +23,31 @@ INNER JOIN climb_stats AS cs
     ON cs.climb_uuid = c.uuid
 INNER JOIN difficulty_grades AS dg
     ON dg.difficulty = CAST(ROUND(cs.display_difficulty) AS INTEGER)
-WHERE c.layout_id = 10
+WHERE c.layout_id IN (10, 11)
   AND c.frames_count = 1
   AND c.is_listed = 1
   AND c.is_draft = 0
+  AND c.edge_left >= -68
+  AND c.edge_right <= 68
+  AND c.edge_bottom >= 0
+  AND c.edge_top <= 144
   AND cs.angle IN (35, 40, 45, 50, 55)
   AND cs.ascensionist_count >= 3
-ORDER BY c.uuid, cs.angle;
+ORDER BY c.layout_id, c.uuid, cs.angle;
 
 -- placements
--- Normalize the full 12x12 Mirror coordinate extent to [0, 1]. Sets 12 and 13
--- are respectively the wood and plastic sets for product size 6.
+-- Raw coordinates join the official install-guide catalog. Normalized
+-- coordinates preserve the complete physical hold extent within the 12x12.
 SELECT
+    p.layout_id AS layout_id,
     p.id AS placement_id,
+    p.set_id AS set_id,
+    h.x AS raw_x,
+    h.y AS raw_y,
     (h.x + 64.0) / 128.0 AS x,
     (h.y - 4.0) / 136.0 AS y
 FROM placements AS p
 INNER JOIN holes AS h
     ON h.id = p.hole_id
-WHERE p.layout_id = 10
+WHERE p.layout_id IN (10, 11)
   AND p.set_id IN (12, 13);

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 import sqlite3
@@ -77,7 +78,7 @@ def _role_lookup(connection: sqlite3.Connection) -> dict[int, str]:
 
 
 def _parse_frame(
-    frame: str, roles: dict[int, str], placements: dict[str, tuple[float, float]]
+    frame: str, roles: dict[int, str], placements: dict[str, dict[str, Any]]
 ) -> tuple[HoldNode, ...]:
     holds: list[HoldNode] = []
     for match in _FRAME_TOKEN.finditer(frame):
@@ -85,17 +86,47 @@ def _parse_frame(
         role_id = int(match.group("role"))
         if placement not in placements or role_id not in roles:
             continue
-        x, y = placements[placement]
-        holds.append(HoldNode(placement, roles[role_id], x, y))
+        metadata = placements[placement]
+        holds.append(
+            HoldNode(
+                placement_id=placement,
+                role=roles[role_id],
+                x=float(metadata["x"]),
+                y=float(metadata["y"]),
+                hold_id=str(metadata["hold_id"]),
+                hold_family=str(metadata["hold_family"]),
+                variant=str(metadata["variant"]),
+                material=str(metadata["material"]),
+                orientation_degrees=float(metadata["orientation_degrees"]),
+            )
+        )
     return tuple(holds)
 
 
-def import_with_query(database: Path, query_file: Path, output: Path) -> int:
+def _load_hold_catalog(path: Path) -> dict[tuple[int, int, int, int], dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as source:
+        rows = list(csv.DictReader(source))
+    catalog = {
+        (
+            int(row["layout_id"]),
+            int(row["set_id"]),
+            int(row["raw_x"]),
+            int(row["raw_y"]),
+        ): row
+        for row in rows
+    }
+    if len(catalog) != len(rows):
+        raise ValueError("Hold catalog contains duplicate layout/set/coordinate rows")
+    return catalog
+
+
+def import_with_query(database: Path, query_file: Path, catalog_file: Path, output: Path) -> int:
     """Run a schema-specific SELECT and convert its rows to canonical JSONL.
 
-    The query must return: climb_id, angle, grade, frames. Optional columns are
-    ascents, votes, group_id. It must also return placement_id, x, y through a
-    second SELECT marked ``-- placements`` in the same file.
+    The route query must return layout, climb_id, angle, grade, and frames. Optional
+    columns are ascents, votes, and group_id. The placement query after the
+    ``-- placements`` separator must return placement_id, layout_id, set_id, raw_x,
+    raw_y, x, and y so every placement can be joined to the audited hold catalog.
     """
 
     sql = query_file.read_text(encoding="utf-8")
@@ -107,10 +138,21 @@ def import_with_query(database: Path, query_file: Path, output: Path) -> int:
     connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     roles = _role_lookup(connection)
-    placements = {
-        str(row["placement_id"]): (float(row["x"]), float(row["y"]))
-        for row in connection.execute(parts[1])
-    }
+    catalog = _load_hold_catalog(catalog_file)
+    placements: dict[str, dict[str, Any]] = {}
+    for row in connection.execute(parts[1]):
+        key = (
+            int(row["layout_id"]),
+            int(row["set_id"]),
+            int(row["raw_x"]),
+            int(row["raw_y"]),
+        )
+        if key not in catalog:
+            raise ValueError(f"Placement {row['placement_id']} is missing from the hold catalog")
+        placements[str(row["placement_id"])] = catalog[key] | {
+            "x": float(row["x"]),
+            "y": float(row["y"]),
+        }
     examples: list[RouteExample] = []
     for row in connection.execute(parts[0]):
         if int(row["angle"]) not in SUPPORTED_ANGLES:
@@ -123,6 +165,7 @@ def import_with_query(database: Path, query_file: Path, output: Path) -> int:
             RouteExample.from_dict(
                 {
                     "climb_id": raw["climb_id"],
+                    "layout": raw["layout"],
                     "angle": raw["angle"],
                     "grade": raw["grade"],
                     "ascents": raw.get("ascents", 0),
@@ -142,11 +185,12 @@ def import_main() -> None:
     parser = argparse.ArgumentParser(description="Import TB2 routes using an audited SQL mapping")
     parser.add_argument("database", type=Path)
     parser.add_argument("--query", type=Path, required=True)
+    parser.add_argument("--catalog", type=Path, default=Path("configs/tb2_12x12_hold_catalog.csv"))
     parser.add_argument(
-        "--output", type=Path, default=Path("data/processed/tb2_mirror_12x12.jsonl")
+        "--output", type=Path, default=Path("data/processed/tb2_12x12_shapes.jsonl")
     )
     args = parser.parse_args()
-    count = import_with_query(args.database, args.query, args.output)
+    count = import_with_query(args.database, args.query, args.catalog, args.output)
     print(json.dumps({"examples": count, "output": str(args.output)}))
 
 

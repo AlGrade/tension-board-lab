@@ -1,10 +1,17 @@
 {
   "board": "Tension Board 2",
-  "layout": "Mirror",
+  "layouts": ["Mirror", "Spray"],
   "size": "12x12",
   "angles": [35, 40, 45, 50, 55],
-  "angle_encoding": "categorical_embedding",
+  "angle_encoding": "continuous_with_3d_geometry",
   "grade_scale": "V",
   "target": "angle-specific community consensus grade",
+  "hold_features": [
+    "family",
+    "variant",
+    "material",
+    "orientation",
+    "coordinates"
+  ],
   "roles": ["start", "hand", "foot", "finish"]
 }

@@ -13,32 +13,37 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from .grades import v_grade_index, v_grade_span
-from .schema import HOLD_ROLES, SUPPORTED_ANGLES, RouteExample
+from .schema import HOLD_ROLES, SUPPORTED_LAYOUTS, RouteExample
 
 ROLE_TO_INDEX = {role: index for index, role in enumerate(HOLD_ROLES)}
-ANGLE_TO_INDEX = {angle: index for index, angle in enumerate(sorted(SUPPORTED_ANGLES))}
+LAYOUT_TO_INDEX = {layout: index for index, layout in enumerate(sorted(SUPPORTED_LAYOUTS))}
+MATERIAL_TO_INDEX = {"wood": 0, "plastic": 1}
 
 
 @dataclass(frozen=True)
 class Vocabulary:
-    placement_to_index: dict[str, int]
+    hold_family_to_index: dict[str, int]
+    variant_to_index: dict[str, int]
     grade_labels: tuple[str, ...]
     grade_offset: int
 
     @classmethod
     def build(cls, examples: Sequence[RouteExample]) -> Vocabulary:
-        placements = sorted({hold.placement_id for route in examples for hold in route.holds})
-        placement_to_index = {placement: index + 1 for index, placement in enumerate(placements)}
+        families = sorted({hold.hold_family for route in examples for hold in route.holds})
+        variants = sorted({hold.variant for route in examples for hold in route.holds})
+        hold_family_to_index = {family: index + 1 for index, family in enumerate(families)}
+        variant_to_index = {variant: index + 1 for index, variant in enumerate(variants)}
         grade_indices = [v_grade_index(route.grade) for route in examples if route.grade]
         if not grade_indices:
             raise ValueError("Cannot build a training vocabulary without grades")
         grade_offset = min(grade_indices)
         labels = v_grade_span(grade_offset, max(grade_indices))
-        return cls(placement_to_index, labels, grade_offset)
+        return cls(hold_family_to_index, variant_to_index, labels, grade_offset)
 
     def as_dict(self) -> dict[str, object]:
         return {
-            "placement_to_index": self.placement_to_index,
+            "hold_family_to_index": self.hold_family_to_index,
+            "variant_to_index": self.variant_to_index,
             "grade_labels": list(self.grade_labels),
             "grade_offset": self.grade_offset,
         }
@@ -46,7 +51,10 @@ class Vocabulary:
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> Vocabulary:
         return cls(
-            placement_to_index={str(k): int(v) for k, v in dict(raw["placement_to_index"]).items()},
+            hold_family_to_index={
+                str(k): int(v) for k, v in dict(raw["hold_family_to_index"]).items()
+            },
+            variant_to_index={str(k): int(v) for k, v in dict(raw["variant_to_index"]).items()},
             grade_labels=tuple(str(value) for value in raw["grade_labels"]),
             grade_offset=int(raw["grade_offset"]),
         )
@@ -61,6 +69,18 @@ class RouteDataset(Dataset[RouteExample]):
 
     def __getitem__(self, index: int) -> RouteExample:
         return self.examples[index]
+
+
+def _configuration_signature(example: RouteExample, *, mirrored: bool) -> str:
+    entries: list[str] = []
+    for hold in example.holds:
+        x = 1.0 - hold.x if mirrored else hold.x
+        orientation = (-hold.orientation_degrees) % 360.0 if mirrored else hold.orientation_degrees
+        variant = {"l": "r", "r": "l"}.get(hold.variant, hold.variant) if mirrored else hold.variant
+        entries.append(
+            f"{x:.6f}:{hold.y:.6f}:{hold.role}:{hold.hold_family}:{variant}:{orientation:.1f}"
+        )
+    return f"{example.layout}|" + "|".join(sorted(entries))
 
 
 def split_examples(
@@ -80,10 +100,9 @@ def split_examples(
         raise ValueError("Split fractions must leave non-empty train, validation, and test ranges")
     groups: dict[str, list[RouteExample]] = defaultdict(list)
     for example in examples:
-        signature = "|".join(
-            f"{hold.placement_id}:{hold.role}"
-            for hold in sorted(example.holds, key=lambda hold: (hold.placement_id, hold.role))
-        )
+        signature = _configuration_signature(example, mirrored=False)
+        if example.layout == "mirror":
+            signature = min(signature, _configuration_signature(example, mirrored=True))
         groups[signature].append(example)
 
     strata: dict[int, list[tuple[str, list[RouteExample]]]] = defaultdict(list)
@@ -132,31 +151,46 @@ def _sample_weight(example: RouteExample) -> float:
 def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dict[str, Tensor]:
     max_holds = max(len(example.holds) for example in batch)
     batch_size = len(batch)
-    placement_ids = torch.zeros((batch_size, max_holds), dtype=torch.long)
+    hold_family_ids = torch.zeros((batch_size, max_holds), dtype=torch.long)
+    variants = torch.zeros((batch_size, max_holds), dtype=torch.long)
+    materials = torch.zeros((batch_size, max_holds), dtype=torch.long)
+    orientations = torch.zeros((batch_size, max_holds, 2), dtype=torch.float32)
     roles = torch.zeros((batch_size, max_holds), dtype=torch.long)
     coordinates = torch.zeros((batch_size, max_holds, 2), dtype=torch.float32)
     mask = torch.zeros((batch_size, max_holds), dtype=torch.bool)
-    angles = torch.zeros(batch_size, dtype=torch.long)
+    angles = torch.zeros(batch_size, dtype=torch.float32)
+    layouts = torch.zeros(batch_size, dtype=torch.long)
     labels = torch.full((batch_size,), -1, dtype=torch.long)
     weights = torch.ones(batch_size, dtype=torch.float32)
 
     for row, example in enumerate(batch):
-        angles[row] = ANGLE_TO_INDEX[example.angle]
+        angles[row] = float(example.angle)
+        layouts[row] = LAYOUT_TO_INDEX[example.layout]
         weights[row] = _sample_weight(example)
         if example.grade is not None:
             labels[row] = v_grade_index(example.grade) - vocabulary.grade_offset
         for column, hold in enumerate(example.holds):
-            placement_ids[row, column] = vocabulary.placement_to_index.get(hold.placement_id, 0)
+            hold_family_ids[row, column] = vocabulary.hold_family_to_index.get(hold.hold_family, 0)
+            variants[row, column] = vocabulary.variant_to_index.get(hold.variant, 0)
+            materials[row, column] = MATERIAL_TO_INDEX[hold.material]
+            radians = math.radians(hold.orientation_degrees)
+            orientations[row, column] = torch.tensor(
+                (math.sin(radians), math.cos(radians)), dtype=torch.float32
+            )
             roles[row, column] = ROLE_TO_INDEX[hold.role]
             coordinates[row, column] = torch.tensor((hold.x, hold.y), dtype=torch.float32)
             mask[row, column] = True
 
     return {
-        "placement_ids": placement_ids,
+        "hold_family_ids": hold_family_ids,
+        "variants": variants,
+        "materials": materials,
+        "orientations": orientations,
         "roles": roles,
         "coordinates": coordinates,
         "mask": mask,
         "angles": angles,
+        "layouts": layouts,
         "labels": labels,
         "weights": weights,
     }

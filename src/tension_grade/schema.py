@@ -11,6 +11,7 @@ from typing import Any
 from .grades import normalize_v_grade
 
 SUPPORTED_ANGLES = frozenset({35, 40, 45, 50, 55})
+SUPPORTED_LAYOUTS = frozenset({"mirror", "spray"})
 HOLD_ROLES = ("start", "hand", "foot", "finish")
 
 
@@ -20,6 +21,11 @@ class HoldNode:
     role: str
     x: float
     y: float
+    hold_id: str
+    hold_family: str
+    variant: str
+    material: str
+    orientation_degrees: float
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> HoldNode:
@@ -31,6 +37,11 @@ class HoldNode:
             role=role,
             x=float(raw["x"]),
             y=float(raw["y"]),
+            hold_id=str(raw["hold_id"]),
+            hold_family=str(raw["hold_family"]),
+            variant=str(raw.get("variant", "none")),
+            material=str(raw["material"]).strip().lower(),
+            orientation_degrees=float(raw["orientation_degrees"]) % 360.0,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -39,12 +50,18 @@ class HoldNode:
             "role": self.role,
             "x": self.x,
             "y": self.y,
+            "hold_id": self.hold_id,
+            "hold_family": self.hold_family,
+            "variant": self.variant,
+            "material": self.material,
+            "orientation_degrees": self.orientation_degrees,
         }
 
 
 @dataclass(frozen=True)
 class RouteExample:
     climb_id: str
+    layout: str
     angle: int
     holds: tuple[HoldNode, ...]
     grade: str | None = None
@@ -54,6 +71,11 @@ class RouteExample:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any], *, require_grade: bool = False) -> RouteExample:
+        layout = str(raw["layout"]).strip().lower()
+        if layout not in SUPPORTED_LAYOUTS:
+            raise ValueError(
+                f"Unsupported layout {layout!r}; expected one of {sorted(SUPPORTED_LAYOUTS)}"
+            )
         angle = int(raw["angle"])
         if angle not in SUPPORTED_ANGLES:
             raise ValueError(
@@ -68,6 +90,7 @@ class RouteExample:
         grade = normalize_v_grade(str(grade_raw)) if grade_raw is not None else None
         return cls(
             climb_id=str(raw.get("climb_id", "prediction")),
+            layout=layout,
             angle=angle,
             holds=holds,
             grade=grade,
@@ -79,6 +102,7 @@ class RouteExample:
     def as_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "climb_id": self.climb_id,
+            "layout": self.layout,
             "angle": self.angle,
             "holds": [hold.as_dict() for hold in self.holds],
             "ascents": self.ascents,
