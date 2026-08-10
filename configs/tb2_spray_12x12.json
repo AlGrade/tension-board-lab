@@ -1,0 +1,9 @@
+{
+  "board": "Tension Board 2",
+  "layout": "Spray",
+  "size": "12x12",
+  "angles": [35, 40, 45, 50, 55],
+  "grade_scale": "Font",
+  "target": "angle-specific community consensus grade",
+  "roles": ["start", "hand", "foot", "finish"]
+}

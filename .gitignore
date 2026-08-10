@@ -1,0 +1,23 @@
+.idea/
+.venv/
+.DS_Store
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+work/
+
+# Board databases may contain account-derived or licensed data.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+checkpoints/*
+!checkpoints/.gitkeep
+*.env

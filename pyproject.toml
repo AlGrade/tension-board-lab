@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tension-grade-predictor"
+version = "0.1.0"
+description = "Board-aware graph transformer for Tension Board 2 grade prediction"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26,<3",
+  "torch>=2.3,<3",
+]
+
+[project.optional-dependencies]
+data = ["boardlib>=0.15,<0.16"]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+tension-inspect-db = "tension_grade.aurora:inspect_main"
+tension-import-aurora = "tension_grade.aurora:import_main"
+tension-train = "tension_grade.train:main"
+tension-predict = "tension_grade.predict:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
