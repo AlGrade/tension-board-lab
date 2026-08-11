@@ -9,6 +9,7 @@ def route_data() -> dict:
         "source_layout": "mirror",
         "angle": 40,
         "grade": "v7",
+        "grade_value": 7.4,
         "holds": [
             {
                 "role": "start",
@@ -31,9 +32,11 @@ def route_data() -> dict:
 def test_route_is_normalized() -> None:
     route = RouteExample.from_dict(route_data(), require_grade=True)
     assert route.grade == "V7"
+    assert route.grade_value == 7.4
     assert route.angle == 40
     assert route.source_layout == "mirror"
     assert route.holds[0].hold_type == "plastic:61"
+    assert route.as_dict()["grade_value"] == 7.4
 
 
 def test_prediction_route_does_not_require_layout_or_removed_hold_fields() -> None:

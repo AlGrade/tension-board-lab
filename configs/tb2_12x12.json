@@ -6,6 +6,10 @@
   "angles": [35, 40, 45, 50, 55],
   "angle_encoding": "continuous degrees plus sine/cosine",
   "grade_scale": "V0-V14",
+  "training_target": {
+    "source": "angle-specific unrounded community difficulty average",
+    "encoding": "linear interpolation on the V-grade axis as soft class labels"
+  },
   "model_inputs": [
     "hold_type",
     "orientation",

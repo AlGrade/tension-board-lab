@@ -118,6 +118,8 @@ def main() -> None:
     torch.manual_seed(args.seed)
 
     examples = load_jsonl(args.dataset)
+    if any(example.grade_value is None for example in examples):
+        raise ValueError("Training examples require an unrounded community grade value")
     train_examples, validation_examples, test_examples = split_examples(examples)
     vocabulary = Vocabulary.build(train_examples)
     for example in validation_examples + test_examples:
@@ -170,7 +172,11 @@ def main() -> None:
             batch = move_batch(raw_batch, device)
             optimizer.zero_grad(set_to_none=True)
             logits = forward_batch(model, batch)
-            loss = grade_loss(logits, batch["labels"], batch["weights"])
+            loss = grade_loss(
+                logits,
+                batch["target_values"],
+                batch["weights"],
+            )
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -229,6 +235,7 @@ def main() -> None:
                 "size": "12x12",
                 "angles": [35, 40, 45, 50, 55],
                 "grade_scale": "V",
+                "training_target": "unrounded community average mapped to soft V-grade labels",
                 "model_inputs": [
                     "hold_type",
                     "orientation",

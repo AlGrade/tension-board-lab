@@ -21,6 +21,10 @@ def test_model_output_and_loss() -> None:
         angles=torch.tensor([35.0, 55.0]),
     )
     assert logits.shape == (2, 8)
-    loss = grade_loss(logits, torch.tensor([2, 6]), torch.ones(2))
+    loss = grade_loss(
+        logits,
+        torch.tensor([2.25, 6.75]),
+        torch.ones(2),
+    )
     assert torch.isfinite(loss)
     loss.backward()

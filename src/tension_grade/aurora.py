@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 import sqlite3
 from pathlib import Path
 from typing import Any
 
+from .grades import v_grade_index
 from .schema import SUPPORTED_ANGLES, HoldNode, RouteExample, write_jsonl
 
 _FRAME_TOKEN = re.compile(r"p(?P<placement>\d+)r(?P<role>\d+)")
@@ -116,11 +118,33 @@ def _load_hold_catalog(path: Path) -> dict[tuple[int, int, int, int], dict[str, 
     return catalog
 
 
+def _difficulty_to_v_index(connection: sqlite3.Connection) -> dict[int, int]:
+    return {
+        int(difficulty): v_grade_index(str(label))
+        for difficulty, label in connection.execute(
+            "SELECT difficulty, boulder_name FROM difficulty_grades"
+        )
+    }
+
+
+def _continuous_v_grade(value: float, difficulty_to_v_index: dict[int, int]) -> float:
+    """Interpolate Aurora's fine-grained difficulty scale onto the V-grade axis."""
+
+    lower = math.floor(value)
+    upper = math.ceil(value)
+    if lower not in difficulty_to_v_index or upper not in difficulty_to_v_index:
+        raise ValueError(f"Difficulty average {value} is outside the Aurora grade table")
+    fraction = value - lower
+    lower_grade = difficulty_to_v_index[lower]
+    upper_grade = difficulty_to_v_index[upper]
+    return lower_grade + fraction * (upper_grade - lower_grade)
+
+
 def import_with_query(database: Path, query_file: Path, catalog_file: Path, output: Path) -> int:
     """Run a schema-specific SELECT and convert its rows to canonical JSONL.
 
     The route query must return source_layout, climb_id, angle, grade, and frames. Optional
-    columns are ascents, votes, and group_id. The placement query after the
+    columns are ascents and difficulty_average. The placement query after the
     ``-- placements`` separator must return placement_id, layout_id, set_id, raw_x,
     raw_y, x, and y so every placement can be joined to the audited hold catalog.
     """
@@ -135,6 +159,7 @@ def import_with_query(database: Path, query_file: Path, catalog_file: Path, outp
     connection.row_factory = sqlite3.Row
     roles = _role_lookup(connection)
     catalog = _load_hold_catalog(catalog_file)
+    difficulty_to_v_index = _difficulty_to_v_index(connection)
     placements: dict[str, dict[str, Any]] = {}
     for row in connection.execute(parts[1]):
         key = (
@@ -157,6 +182,7 @@ def import_with_query(database: Path, query_file: Path, catalog_file: Path, outp
         if len(holds) < 2:
             continue
         raw = dict(row)
+        difficulty_average = raw.get("difficulty_average")
         examples.append(
             RouteExample.from_dict(
                 {
@@ -164,9 +190,14 @@ def import_with_query(database: Path, query_file: Path, catalog_file: Path, outp
                     "source_layout": raw["source_layout"],
                     "angle": raw["angle"],
                     "grade": raw["grade"],
+                    "grade_value": (
+                        _continuous_v_grade(
+                            float(difficulty_average), difficulty_to_v_index
+                        )
+                        if difficulty_average is not None
+                        else None
+                    ),
                     "ascents": raw.get("ascents", 0),
-                    "votes": raw.get("votes", 0),
-                    "group_id": raw.get("group_id"),
                     "holds": [hold.as_dict() for hold in holds],
                 },
                 require_grade=True,

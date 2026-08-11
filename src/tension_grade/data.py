@@ -129,8 +129,7 @@ def split_examples(
 
 
 def _sample_weight(example: RouteExample) -> float:
-    evidence = max(example.votes, example.ascents)
-    return min(3.0, 1.0 + math.log1p(evidence) / 5.0)
+    return min(3.0, 1.0 + math.log1p(example.ascents) / 5.0)
 
 
 def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dict[str, Tensor]:
@@ -143,6 +142,7 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
     mask = torch.zeros((batch_size, max_holds), dtype=torch.bool)
     angles = torch.zeros(batch_size, dtype=torch.float32)
     labels = torch.full((batch_size,), -1, dtype=torch.long)
+    target_values = torch.full((batch_size,), float("nan"), dtype=torch.float32)
     weights = torch.ones(batch_size, dtype=torch.float32)
 
     for row, example in enumerate(batch):
@@ -150,6 +150,11 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
         weights[row] = _sample_weight(example)
         if example.grade is not None:
             labels[row] = v_grade_index(example.grade) - vocabulary.grade_offset
+            target_values[row] = (
+                example.grade_value - vocabulary.grade_offset
+                if example.grade_value is not None
+                else float(labels[row])
+            )
         for column, hold in enumerate(example.holds):
             hold_type_ids[row, column] = vocabulary.hold_type_to_index.get(hold.hold_type, 0)
             radians = math.radians(hold.orientation_degrees)
@@ -168,5 +173,6 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
         "mask": mask,
         "angles": angles,
         "labels": labels,
+        "target_values": target_values,
         "weights": weights,
     }

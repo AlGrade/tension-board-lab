@@ -14,10 +14,9 @@ SELECT
             THEN SUBSTR(dg.boulder_name, INSTR(dg.boulder_name, '/') + 1)
         ELSE dg.boulder_name
     END AS grade,
+    cs.difficulty_average AS difficulty_average,
     c.frames AS frames,
-    cs.ascensionist_count AS ascents,
-    0 AS votes,
-    c.uuid AS group_id
+    cs.ascensionist_count AS ascents
 FROM climbs AS c
 INNER JOIN climb_stats AS cs
     ON cs.climb_uuid = c.uuid

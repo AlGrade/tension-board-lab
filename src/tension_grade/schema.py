@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .grades import normalize_v_grade
+from .grades import V_GRADES, normalize_v_grade
 
 SUPPORTED_ANGLES = frozenset({35, 40, 45, 50, 55})
 SUPPORTED_SOURCE_LAYOUTS = frozenset({"mirror", "spray"})
@@ -56,9 +57,8 @@ class RouteExample:
     holds: tuple[HoldNode, ...]
     source_layout: str | None = None
     grade: str | None = None
+    grade_value: float | None = None
     ascents: int = 0
-    votes: int = 0
-    group_id: str | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any], *, require_grade: bool = False) -> RouteExample:
@@ -83,15 +83,20 @@ class RouteExample:
         if require_grade and grade_raw is None:
             raise ValueError("Training examples require a grade")
         grade = normalize_v_grade(str(grade_raw)) if grade_raw is not None else None
+        grade_value_raw = raw.get("grade_value")
+        grade_value = float(grade_value_raw) if grade_value_raw is not None else None
+        if grade_value is not None and (
+            not math.isfinite(grade_value) or not 0.0 <= grade_value < len(V_GRADES)
+        ):
+            raise ValueError(f"Continuous V-grade value is outside the supported range: {grade_value}")
         return cls(
             climb_id=str(raw.get("climb_id", "prediction")),
             angle=angle,
             holds=holds,
             source_layout=source_layout,
             grade=grade,
+            grade_value=grade_value,
             ascents=max(0, int(raw.get("ascents", 0))),
-            votes=max(0, int(raw.get("votes", 0))),
-            group_id=str(raw["group_id"]) if raw.get("group_id") is not None else None,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -100,14 +105,13 @@ class RouteExample:
             "angle": self.angle,
             "holds": [hold.as_dict() for hold in self.holds],
             "ascents": self.ascents,
-            "votes": self.votes,
         }
         if self.source_layout is not None:
             result["source_layout"] = self.source_layout
         if self.grade is not None:
             result["grade"] = self.grade
-        if self.group_id is not None:
-            result["group_id"] = self.group_id
+        if self.grade_value is not None:
+            result["grade_value"] = self.grade_value
         return result
 
 

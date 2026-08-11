@@ -6,7 +6,6 @@ import math
 from dataclasses import asdict, dataclass
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 
@@ -149,14 +148,25 @@ class TensionGradeTransformer(nn.Module):
 
 
 def grade_loss(
-    logits: Tensor, targets: Tensor, weights: Tensor, distance_weight: float = 0.15
+    logits: Tensor,
+    target_values: Tensor,
+    weights: Tensor,
+    distance_weight: float = 0.15,
 ) -> Tensor:
-    """Categorical loss plus an ordinal penalty for far-away grade predictions."""
+    """Soft-label classification plus a continuous ordinal distance penalty."""
 
-    categorical = F.cross_entropy(logits, targets, label_smoothing=0.04, reduction="none")
+    ordinal_targets = target_values.to(logits.dtype).clamp(0, logits.shape[-1] - 1)
+    lower = ordinal_targets.floor().long()
+    upper = ordinal_targets.ceil().long()
+    upper_weight = ordinal_targets - lower.to(logits.dtype)
+    soft_targets = torch.zeros_like(logits)
+    soft_targets.scatter_add_(1, lower.unsqueeze(1), (1.0 - upper_weight).unsqueeze(1))
+    soft_targets.scatter_add_(1, upper.unsqueeze(1), upper_weight.unsqueeze(1))
+    soft_targets = soft_targets * 0.96 + 0.04 / logits.shape[-1]
+    categorical = -(soft_targets * logits.log_softmax(dim=-1)).sum(dim=-1)
     predicted_probabilities = logits.softmax(dim=-1)
     grade_axis = torch.arange(logits.shape[-1], device=logits.device, dtype=logits.dtype)
-    distance = (grade_axis.unsqueeze(0) - targets.unsqueeze(1)).abs()
+    distance = (grade_axis.unsqueeze(0) - ordinal_targets.unsqueeze(1)).abs()
     ordinal = (predicted_probabilities * distance).sum(dim=-1)
     losses = categorical + distance_weight * ordinal
     return (losses * weights).sum() / weights.sum().clamp_min(1e-8)

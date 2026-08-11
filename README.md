@@ -32,7 +32,8 @@ but the model is not told which layout an example came from.
 The training dataset contains 21,809 community-graded `(climb, angle)` examples from
 the Mirror and Spray layouts at 35°, 40°, 45°, 50°, and 55°. Input-equivalent,
 renamed, and mirrored climbs are kept in the same data split to prevent the test set
-from leaking into training.
+from leaking into training. Training preserves Aurora's unrounded community average
+as a soft target instead of discarding it by rounding before learning.
 
 ## Machine learning approach
 
@@ -40,14 +41,15 @@ The model embeds every hold and uses pairwise geometry—such as distance, direc
 and wall-relative movement—to connect it to every other hold. Six graph-transformer
 blocks with eight attention heads learn which holds and possible moves matter. An
 ordinal-aware classifier then produces probabilities for `V0` through `V14`; those
-probabilities are calibrated on the validation set before confidence is reported.
+probabilities are trained against the continuous community target and calibrated on
+the validation set before confidence is reported.
 
 The canonical model has 2.85 million parameters. On the untouched test split of
 2,174 examples it achieves:
 
-- **1.028 V grades** mean absolute error;
-- **73.64%** of predictions within one V grade;
-- **32.84%** exact-grade accuracy.
+- **0.996 V grades** mean absolute error;
+- **75.34%** of predictions within one V grade;
+- **33.26%** exact-grade accuracy.
 
 Grades are subjective, so confidence means model confidence—not certainty that every
 climber will experience the problem the same way.
