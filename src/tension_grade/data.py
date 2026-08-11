@@ -71,7 +71,9 @@ class RouteDataset(Dataset[RouteExample]):
         return self.examples[index]
 
 
-def _configuration_signature(example: RouteExample, *, mirrored: bool) -> str:
+def _configuration_signature(
+    example: RouteExample, *, mirrored: bool, include_layout: bool = True
+) -> str:
     entries: list[str] = []
     for hold in example.holds:
         x = 1.0 - hold.x if mirrored else hold.x
@@ -80,7 +82,8 @@ def _configuration_signature(example: RouteExample, *, mirrored: bool) -> str:
         entries.append(
             f"{x:.6f}:{hold.y:.6f}:{hold.role}:{hold.hold_family}:{variant}:{orientation:.1f}"
         )
-    return f"{example.layout}|" + "|".join(sorted(entries))
+    prefix = f"{example.layout}|" if include_layout else ""
+    return prefix + "|".join(sorted(entries))
 
 
 def split_examples(
@@ -88,6 +91,7 @@ def split_examples(
     *,
     train_fraction: float = 0.8,
     validation_fraction: float = 0.1,
+    include_layout: bool = True,
 ) -> tuple[list[RouteExample], list[RouteExample], list[RouteExample]]:
     """Split deterministic, grade-stratified hold configurations as indivisible groups.
 
@@ -100,9 +104,12 @@ def split_examples(
         raise ValueError("Split fractions must leave non-empty train, validation, and test ranges")
     groups: dict[str, list[RouteExample]] = defaultdict(list)
     for example in examples:
-        signature = _configuration_signature(example, mirrored=False)
+        signature = _configuration_signature(example, mirrored=False, include_layout=include_layout)
         if example.layout == "mirror":
-            signature = min(signature, _configuration_signature(example, mirrored=True))
+            signature = min(
+                signature,
+                _configuration_signature(example, mirrored=True, include_layout=include_layout),
+            )
         groups[signature].append(example)
 
     strata: dict[int, list[tuple[str, list[RouteExample]]]] = defaultdict(list)

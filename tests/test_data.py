@@ -2,10 +2,16 @@ from tension_grade.data import split_examples
 from tension_grade.schema import HoldNode, RouteExample
 
 
-def example(climb_id: str, grade: str, placements: tuple[str, ...]) -> RouteExample:
+def example(
+    climb_id: str,
+    grade: str,
+    placements: tuple[str, ...],
+    *,
+    layout: str = "mirror",
+) -> RouteExample:
     return RouteExample(
         climb_id=climb_id,
-        layout="mirror",
+        layout=layout,
         angle=40,
         grade=grade,
         holds=tuple(
@@ -87,5 +93,26 @@ def test_mirrored_copies_remain_in_one_split() -> None:
         for split_index, split in enumerate(splits)
         for route in split
         if route.climb_id in {"left", "right"}
+    }
+    assert len(locations) == 1
+
+
+def test_layout_is_excluded_from_groups_when_it_is_not_a_model_input() -> None:
+    examples = [
+        example(f"ordinary-{index}", f"V{index % 4}", (str(index), str(index + 100)))
+        for index in range(80)
+    ]
+    examples.extend(
+        (
+            example("mirror-copy", "V5", ("900", "901"), layout="mirror"),
+            example("spray-copy", "V5", ("900", "901"), layout="spray"),
+        )
+    )
+    splits = split_examples(examples, include_layout=False)
+    locations = {
+        split_index
+        for split_index, split in enumerate(splits)
+        for route in split
+        if route.climb_id in {"mirror-copy", "spray-copy"}
     }
     assert len(locations) == 1

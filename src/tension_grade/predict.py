@@ -14,6 +14,24 @@ from .schema import RouteExample
 from .train import forward_batch, move_batch, select_device
 
 
+def route_for_model(raw: dict, config: ModelConfig) -> RouteExample:
+    """Fill arbitrary placeholders for fields disabled by this checkpoint."""
+
+    normalized = dict(raw)
+    if not config.use_layout:
+        normalized["layout"] = "mirror"
+    holds = []
+    for raw_hold in raw["holds"]:
+        hold = dict(raw_hold)
+        if not config.use_variant:
+            hold["variant"] = "none"
+        if not config.use_material:
+            hold["material"] = "wood"
+        holds.append(hold)
+    normalized["holds"] = holds
+    return RouteExample.from_dict(normalized, require_grade=False)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("checkpoint", type=Path)
@@ -33,7 +51,7 @@ def main() -> None:
     model.to(device).eval()
 
     with args.route.open(encoding="utf-8") as source:
-        route = RouteExample.from_dict(json.load(source), require_grade=False)
+        route = route_for_model(json.load(source), config)
     batch = move_batch(collate_routes([route], vocabulary), device)
     with torch.no_grad():
         distribution = probabilities(

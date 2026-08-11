@@ -42,6 +42,22 @@ Mirror and Spray share the shape embeddings and transformer. A small layout
 embedding lets the network account for systematic layout differences without
 memorizing placement IDs.
 
+### Essential input profile
+
+An optional ablation profile removes the explicit layout, material, and left/right
+variant inputs. It retains only hold family, orientation, coordinates, route role,
+and continuous wall angle. The hold-family namespace still makes material logically
+inferable from the physical hold type, but there is no separate material embedding.
+
+```bash
+tension-train data/processed/tb2_12x12_shapes.jsonl \
+  --input-profile essential \
+  --output checkpoints/tb2_12x12_essential.pt
+```
+
+For this checkpoint, layout, material, and variant may be omitted from prediction
+JSON. See `examples/essential_route.json`.
+
 ## Setup
 
 Python 3.10 or newer is required. From the project directory:
@@ -120,6 +136,12 @@ tension-predict checkpoints/tb2_12x12_shapes.pt examples/route.json
 
 Only the predicted V grade and calibrated confidence are printed.
 
+For the Essential checkpoint:
+
+```bash
+tension-predict checkpoints/tb2_12x12_essential.pt examples/essential_route.json
+```
+
 ## Test
 
 ```bash
@@ -143,3 +165,21 @@ epoch 13. Its untouched, duplicate-safe test results are:
 The checkpoint and generated dataset stay gitignored because they are reproducible
 binary artifacts. See `reports/tb2_12x12_shapes.metrics.json` for exact split and
 angle-by-angle metrics.
+
+## Essential-input experiment
+
+The Essential model has 2,851,263 parameters, 106 hold-family embeddings, width 192,
+eight attention heads, and six transformer blocks. It was compared with a Full-input
+control trained with the same seed and architecture on the exact same
+17,413/2,210/2,186 split:
+
+| Model | Test MAE | Within one | Exact |
+| --- | ---: | ---: | ---: |
+| Essential | 1.0206 | 74.89% | 32.11% |
+| Matched Full control | 1.0197 | 74.79% | 32.71% |
+
+The 0.0009 MAE difference is negligible. In this single-seed experiment, explicit
+layout, material, and variant inputs provided no measurable MAE benefit. The
+Essential checkpoint remains separate from the original Full checkpoint. Exact
+specs and breakdowns are in `configs/tb2_12x12_essential.json` and
+`reports/tb2_12x12_essential.metrics.json`.

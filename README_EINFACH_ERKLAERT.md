@@ -208,3 +208,27 @@ Grifftypen + Drehungen + Positionen + Layout + Winkel
                          ↓
                V-Grade + Confidence
 ```
+
+## Zweiter Versuch mit weniger Inputs
+
+Zusätzlich wurde ein **Essential-Modell** trainiert. Dieses Modell bekommt nur noch:
+
+- den Grifftyp beziehungsweise die Grifffamilie;
+- die Drehung;
+- die X/Y-Position;
+- Start, Hand, Fuß oder Finish;
+- die Wandneigung.
+
+Es bekommt kein Layout, kein separates Material, keine Links/Rechts-Variante und
+keine Placement-ID. Mirror und Spray bleiben gemeinsam in den Trainingsdaten, werden
+dem Modell aber nicht ausdrücklich genannt.
+
+Damit der Vergleich fair ist, wurde ein Kontrollmodell mit allen Inputs auf exakt
+demselben Datensplit trainiert:
+
+- Essential-Modell: **1,0206 MAE**;
+- Full-Kontrollmodell: **1,0197 MAE**.
+
+Der Unterschied von 0,0009 V-Grades ist praktisch null. In diesem Versuch halfen
+Layout, separates Material und Links/Rechts-Variante also nicht messbar. Das
+einfachere Essential-Modell erreicht praktisch dieselbe Leistung.

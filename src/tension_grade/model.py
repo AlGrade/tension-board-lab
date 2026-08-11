@@ -23,8 +23,11 @@ class ModelConfig:
     layers: int = 6
     expansion: int = 4
     dropout: float = 0.12
+    use_variant: bool = True
+    use_material: bool = True
+    use_layout: bool = True
 
-    def as_dict(self) -> dict[str, int | float]:
+    def as_dict(self) -> dict[str, int | float | bool]:
         return asdict(self)
 
 
@@ -102,10 +105,16 @@ class TensionGradeTransformer(nn.Module):
         super().__init__()
         self.config = config
         self.hold_family_embedding = nn.Embedding(config.num_hold_families + 1, config.width)
-        self.variant_embedding = nn.Embedding(config.num_variants + 1, config.width)
-        self.material_embedding = nn.Embedding(config.num_materials, config.width)
+        self.variant_embedding = (
+            nn.Embedding(config.num_variants + 1, config.width) if config.use_variant else None
+        )
+        self.material_embedding = (
+            nn.Embedding(config.num_materials, config.width) if config.use_material else None
+        )
         self.role_embedding = nn.Embedding(config.num_roles, config.width)
-        self.layout_embedding = nn.Embedding(config.num_layouts, config.width)
+        self.layout_embedding = (
+            nn.Embedding(config.num_layouts, config.width) if config.use_layout else None
+        )
         self.orientation_embedding = nn.Sequential(
             nn.Linear(2, config.width), nn.GELU(), nn.Linear(config.width, config.width)
         )
@@ -142,16 +151,20 @@ class TensionGradeTransformer(nn.Module):
     ) -> Tensor:
         radians = torch.deg2rad(angles)
         angle_features = torch.stack((angles / 90.0, radians.sin(), radians.cos()), dim=-1)
-        global_context = self.angle_embedding(angle_features) + self.layout_embedding(layouts)
+        global_context = self.angle_embedding(angle_features)
+        if self.layout_embedding is not None:
+            global_context = global_context + self.layout_embedding(layouts)
         nodes = (
             self.hold_family_embedding(hold_family_ids)
-            + self.variant_embedding(variants)
-            + self.material_embedding(materials)
             + self.orientation_embedding(orientations)
             + self.role_embedding(roles)
             + self.coordinate_embedding(coordinates)
             + global_context.unsqueeze(1)
         )
+        if self.variant_embedding is not None:
+            nodes = nodes + self.variant_embedding(variants)
+        if self.material_embedding is not None:
+            nodes = nodes + self.material_embedding(materials)
         nodes = self.input_norm(nodes) * mask.unsqueeze(-1)
         for block in self.blocks:
             nodes = block(nodes, coordinates, mask, angles)

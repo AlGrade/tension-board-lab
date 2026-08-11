@@ -112,6 +112,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=192)
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--layers", type=int, default=6)
+    parser.add_argument(
+        "--input-profile",
+        choices=("full", "essential"),
+        default="full",
+        help="'essential' excludes layout, material, and left/right variant inputs",
+    )
+    parser.add_argument(
+        "--split-profile",
+        choices=("layout-aware", "layout-agnostic"),
+        help="Override split grouping; defaults to the matching input profile",
+    )
     return parser.parse_args()
 
 
@@ -122,7 +133,13 @@ def main() -> None:
     torch.manual_seed(args.seed)
 
     examples = load_jsonl(args.dataset)
-    train_examples, validation_examples, test_examples = split_examples(examples)
+    use_extra_inputs = args.input_profile == "full"
+    split_includes_layout = (
+        args.split_profile == "layout-aware" if args.split_profile is not None else use_extra_inputs
+    )
+    train_examples, validation_examples, test_examples = split_examples(
+        examples, include_layout=split_includes_layout
+    )
     vocabulary = Vocabulary.build(train_examples)
     for example in validation_examples + test_examples:
         if example.grade not in vocabulary.grade_labels:
@@ -153,6 +170,9 @@ def main() -> None:
         width=args.width,
         heads=args.heads,
         layers=args.layers,
+        use_variant=use_extra_inputs,
+        use_material=use_extra_inputs,
+        use_layout=use_extra_inputs,
     )
     device = select_device(args.device)
     model = TensionGradeTransformer(config).to(device)
@@ -217,7 +237,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "format_version": 2,
+            "format_version": 3,
             "model_state": best_state,
             "model_config": config.as_dict(),
             "vocabulary": vocabulary.as_dict(),
@@ -231,14 +251,12 @@ def main() -> None:
                 "size": "12x12",
                 "angles": [35, 40, 45, 50, 55],
                 "grade_scale": "V",
-                "hold_features": [
-                    "family",
-                    "variant",
-                    "material",
-                    "orientation",
-                    "coordinates",
-                ],
+                "input_profile": args.input_profile,
+                "hold_features": ["family", "orientation", "coordinates", "role"]
+                + (["variant", "material"] if use_extra_inputs else []),
+                "layout_input": use_extra_inputs,
                 "angle_encoding": "continuous",
+                "split_group_includes_layout": split_includes_layout,
             },
             "training_args": vars(args)
             | {"dataset": str(args.dataset), "output": str(args.output)},

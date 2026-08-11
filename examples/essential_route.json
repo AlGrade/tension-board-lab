@@ -1,0 +1,15 @@
+{
+  "climb_id": "essential-input-example",
+  "angle": 45,
+  "holds": [
+    {"placement_id": "326", "role": "finish", "x": 0.4375, "y": 1.0, "hold_id": "CBI", "hold_family": "wood:CBI", "orientation_degrees": 337.5},
+    {"placement_id": "359", "role": "foot", "x": 0.28125, "y": 0.382353, "hold_id": "20D", "hold_family": "wood:20D", "orientation_degrees": 45.0},
+    {"placement_id": "428", "role": "foot", "x": 0.53125, "y": 0.029412, "hold_id": "TDP", "hold_family": "wood:TDP", "orientation_degrees": 45.0},
+    {"placement_id": "433", "role": "hand", "x": 0.53125, "y": 0.794118, "hold_id": "SHL", "hold_family": "wood:SHL", "orientation_degrees": 0.0},
+    {"placement_id": "440", "role": "hand", "x": 0.5625, "y": 0.529412, "hold_id": "SRP", "hold_family": "wood:SRP", "orientation_degrees": 337.5},
+    {"placement_id": "446", "role": "start", "x": 0.59375, "y": 0.264706, "hold_id": "UCM", "hold_family": "wood:UCM", "orientation_degrees": 0.0},
+    {"placement_id": "479", "role": "hand", "x": 0.71875, "y": 0.558824, "hold_id": "SKT", "hold_family": "wood:SKT", "orientation_degrees": 292.5},
+    {"placement_id": "482", "role": "hand", "x": 0.71875, "y": 0.852941, "hold_id": "DLI", "hold_family": "wood:DLI", "orientation_degrees": 337.5},
+    {"placement_id": "494", "role": "start", "x": 0.78125, "y": 0.323529, "hold_id": "DEP", "hold_family": "wood:DEP", "orientation_degrees": 0.0}
+  ]
+}
