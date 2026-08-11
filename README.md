@@ -25,6 +25,9 @@ Each selected hold becomes one point in a graph. The model receives:
 - its role: start, hand, foot, or finish;
 - the wall angle as a continuous numeric input.
 
+The hold-type token includes its material prefix—for example, `wood:SHLP` or
+`plastic:12`. Material is not provided as an additional, separate feature.
+
 It does **not** receive the layout name, climb name, placement ID, ascent count, or
 known grade when making a prediction. Mirror and Spray are both training sources,
 but the model is not told which layout an example came from.
@@ -73,7 +76,7 @@ tension-predict checkpoints/tb2_12x12.pt examples/route.json
 Example output:
 
 ```json
-{"predicted_grade":"V8","confidence":0.5128}
+{"predicted_grade":"V9","confidence":0.3832}
 ```
 
 Copy [`examples/route.json`](examples/route.json) and replace its angle and holds to

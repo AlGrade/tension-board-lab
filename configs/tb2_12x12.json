@@ -33,7 +33,7 @@
   ],
   "excluded_inputs": [
     "layout",
-    "material",
+    "material_as_separate_feature",
     "left_right_variant",
     "placement_id",
     "climb_name",
