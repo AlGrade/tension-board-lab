@@ -1,125 +1,100 @@
 # Tension Grade Predictor
 
-A geometry-aware graph transformer that predicts angle-specific V grades for the
-Tension Board 2 12x12 using one deliberately small input contract.
+This project predicts the difficulty of a boulder problem on a **Tension Board 2
+12x12**. A Tension Board is a standardized indoor climbing wall: the holds stay in
+fixed positions, but climbers choose which ones belong to a problem.
 
-For a non-technical German explanation, see
-[`README_EINFACH_ERKLAERT.md`](README_EINFACH_ERKLAERT.md).
+Give the model the wall angle and the selected holds. It returns a V grade and its
+confidence—for example, `V8` with `51%` confidence. The target is the community's
+consensus grade at that particular angle, not an objective measure of difficulty.
 
-## Input and output
-
-The model receives the wall angle and, for every selected hold:
-
-- `hold_type`: one of 106 physical hold types;
-- `orientation_degrees`: its rotation on the board;
-- `x` and `y`: normalized board coordinates;
-- `role`: `start`, `hand`, `foot`, or `finish`.
-
-It does **not** receive a layout, separate material, left/right variant, placement
-ID, climb name, ascent count, or grade. Mirror and Spray are only source metadata in
-the training dataset and never become model tensors.
-
-The output is intentionally limited to the most likely grade and its calibrated
-class probability:
-
-```json
-{"predicted_grade":"V8","confidence":0.5128}
+```mermaid
+flowchart LR
+    A["Wall angle<br/>e.g. 45°"] --> C
+    B["Selected holds<br/>type · rotation · position · role"] --> C["Graph Transformer"]
+    C --> D["Predicted grade<br/>V8"]
+    C --> E["Confidence<br/>51%"]
 ```
 
-Confidence is model confidence, not objective certainty about a subjective grade.
+## What the model learns from
 
-## Architecture
+Each selected hold becomes one point in a graph. The model receives:
 
-The canonical model has 2,851,263 parameters, width 192, eight attention heads, and
-six graph-transformer blocks. Hold type, orientation, coordinates, and route role
-form one node per selected hold. The continuous angle encoding contains the degree
-value plus sine/cosine terms.
+- the hold type;
+- its rotation and X/Y position;
+- its role: start, hand, foot, or finish;
+- the wall angle as a continuous numeric input.
 
-Attention between every pair of holds receives a learned geometric bias containing
-horizontal and vertical separation, Euclidean distance, direction, wall-relative
-vertical gain, and overhang depth. An ordinal-aware classification head returns a
-distribution over V0 through V14.
+It does **not** receive the layout name, climb name, placement ID, ascent count, or
+known grade when making a prediction. Mirror and Spray are both training sources,
+but the model is not told which layout an example came from.
 
-## Setup
+The training dataset contains 21,809 community-graded `(climb, angle)` examples from
+the Mirror and Spray layouts at 35°, 40°, 45°, 50°, and 55°. Input-equivalent,
+renamed, and mirrored climbs are kept in the same data split to prevent the test set
+from leaking into training.
 
-Python 3.10 or newer is required:
+## Machine learning approach
+
+The model embeds every hold and uses pairwise geometry—such as distance, direction,
+and wall-relative movement—to connect it to every other hold. Six graph-transformer
+blocks with eight attention heads learn which holds and possible moves matter. An
+ordinal-aware classifier then produces probabilities for `V0` through `V14`; those
+probabilities are calibrated on the validation set before confidence is reported.
+
+The canonical model has 2.85 million parameters. On the untouched test split of
+2,174 examples it achieves:
+
+- **1.028 V grades** mean absolute error;
+- **73.64%** of predictions within one V grade;
+- **32.84%** exact-grade accuracy.
+
+Grades are subjective, so confidence means model confidence—not certainty that every
+climber will experience the problem the same way.
+
+## Use it
+
+Python 3.10 or newer is required.
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[data,dev]"
+
+tension-predict checkpoints/tb2_12x12.pt examples/route.json
 ```
 
-## Dataset
+Example output:
 
-The current local database snapshot is `data/raw/tension.sqlite3`. Databases and
-generated datasets are gitignored. The audited importer selects:
+```json
+{"predicted_grade":"V8","confidence":0.5128}
+```
 
-- Tension Board 2 Mirror and Spray;
-- board size 12x12 with wood and plastic sets;
-- 35°, 40°, 45°, 50°, and 55°;
-- listed, single-frame boulders;
-- angle-specific community grades with at least three ascensionists.
+Copy [`examples/route.json`](examples/route.json) and replace its angle and holds to
+make a prediction. Coordinates are normalized to the board; rotations are degrees.
 
-The official install-guide catalog maps Aurora placements to hold type, orientation,
-and coordinates. Material and variant remain source-audit columns in that catalog,
-but are discarded when the canonical dataset is written.
+## Rebuild the data and model
 
-Regenerate the only processed dataset:
+Place the local Aurora database at `data/raw/tension.sqlite3`, then run:
 
 ```bash
 tension-import-aurora data/raw/tension.sqlite3 \
   --query configs/aurora_tb2_12x12.sql \
   --catalog configs/tb2_12x12_hold_catalog.csv \
   --output data/processed/tb2_12x12.jsonl
-```
 
-The result contains 21,809 `(climb, angle)` examples: 13,043 from Mirror and 8,766
-from Spray. `source_layout`, ascent count, and the target grade are training metadata,
-not prediction inputs.
-
-## Train
-
-```bash
 tension-train data/processed/tb2_12x12.jsonl \
   --output checkpoints/tb2_12x12.pt
 ```
 
-Training uses AdamW, cosine learning-rate decay, gradient clipping, early stopping,
-an ordinal distance penalty, and validation-set temperature calibration.
+The database, generated dataset, and trained checkpoint are intentionally ignored by
+Git. The versioned model specification is in
+[`configs/tb2_12x12.json`](configs/tb2_12x12.json), and the full evaluation report is
+in [`reports/tb2_12x12.metrics.json`](reports/tb2_12x12.metrics.json).
 
-The deterministic split groups the exact inputs seen by the model. All angles,
-renamed copies, and input-equivalent Mirror/Spray configurations remain together.
-Mirror reflections are canonicalized too. The current split contains 17,477 training,
-2,158 validation, and 2,174 test examples with zero shared configuration groups.
-
-## Predict
-
-See `examples/route.json` for the complete minimal input shape.
-
-```bash
-tension-predict checkpoints/tb2_12x12.pt examples/route.json
-```
-
-## Verify
+Run the checks with:
 
 ```bash
 pytest
 ruff check .
 ```
-
-## Current checkpoint
-
-The canonical checkpoint selected epoch 12 and stopped at epoch 24. On the untouched
-test split it reaches:
-
-- mean absolute error: 1.0281 V-grade steps;
-- within one V-grade step: 73.64%;
-- exact-grade accuracy: 32.84%;
-- Mirror MAE: 0.9977 across 1,314 examples;
-- Spray MAE: 1.0744 across 860 examples;
-- confidence temperature: 1.37.
-
-The checkpoint is a reproducible, gitignored binary artifact. Exact model specs are
-in `configs/tb2_12x12.json`; the complete evaluation is in
-`reports/tb2_12x12.metrics.json`.
