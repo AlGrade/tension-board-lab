@@ -2,7 +2,13 @@
   "dataset": {
     "examples": 21809,
     "mirror_examples": 13043,
-    "spray_examples": 8766
+    "spray_examples": 8766,
+    "pretraining_raw_examples": 49512,
+    "pretraining_used_examples": 44232,
+    "pretraining_ascents_1": 18045,
+    "pretraining_ascents_2": 8710,
+    "pretraining_ascents_3_plus": 17477,
+    "pretraining_excluded_validation_test_groups": 3068
   },
   "split": {
     "strategy": "grade-stratified exact model-input groups with Mirror reflection canonicalization",
@@ -19,9 +25,10 @@
     "format_version": 4,
     "parameters": 2851263,
     "hold_types": 106,
-    "selected_epoch": 15,
-    "stopped_epoch": 27,
-    "temperature": 1.4600000381469727,
+    "selected_epoch": 18,
+    "stopped_epoch": 30,
+    "temperature": 1.6699999570846558,
+    "pretraining_epochs": 15,
     "training_target": "unrounded community average mapped to soft V-grade labels",
     "inputs": [
       "hold_type",
@@ -33,53 +40,53 @@
   },
   "test": {
     "examples": 2174,
-    "mae_v_grade_steps": 0.9963201284408569,
-    "within_one_grade": 0.7534498572349548,
-    "exact_accuracy": 0.3325667083263397,
+    "mae_v_grade_steps": 0.9351425766944885,
+    "within_one_grade": 0.7796688079833984,
+    "exact_accuracy": 0.3482060730457306,
     "by_layout": {
       "mirror": {
         "examples": 1314,
-        "mae_v_grade_steps": 0.9756468534469604,
-        "within_one_grade": 0.7716894745826721,
-        "exact_accuracy": 0.334094375371933
+        "mae_v_grade_steps": 0.9208523631095886,
+        "within_one_grade": 0.7899543642997742,
+        "exact_accuracy": 0.3485540449619293
       },
       "spray": {
         "examples": 860,
-        "mae_v_grade_steps": 1.0279070138931274,
-        "within_one_grade": 0.7255814075469971,
-        "exact_accuracy": 0.33023256063461304
+        "mae_v_grade_steps": 0.9569767713546753,
+        "within_one_grade": 0.7639535069465637,
+        "exact_accuracy": 0.3476744294166565
       }
     },
     "by_angle": {
       "35": {
         "examples": 252,
-        "mae_v_grade_steps": 0.908730149269104,
-        "within_one_grade": 0.8015872836112976,
-        "exact_accuracy": 0.3452380895614624
+        "mae_v_grade_steps": 0.8492063283920288,
+        "within_one_grade": 0.8333333134651184,
+        "exact_accuracy": 0.3650793731212616
       },
       "40": {
         "examples": 1214,
-        "mae_v_grade_steps": 0.9884678721427917,
-        "within_one_grade": 0.7553542256355286,
-        "exact_accuracy": 0.33772653341293335
+        "mae_v_grade_steps": 0.9242174625396729,
+        "within_one_grade": 0.7775947451591492,
+        "exact_accuracy": 0.3525535464286804
       },
       "45": {
         "examples": 470,
-        "mae_v_grade_steps": 1.0085105895996094,
-        "within_one_grade": 0.7595744729042053,
-        "exact_accuracy": 0.3297872245311737
+        "mae_v_grade_steps": 0.9659574627876282,
+        "within_one_grade": 0.7808510661125183,
+        "exact_accuracy": 0.33829787373542786
       },
       "50": {
         "examples": 190,
-        "mae_v_grade_steps": 1.0526316165924072,
-        "within_one_grade": 0.7052631378173828,
-        "exact_accuracy": 0.31578946113586426
+        "mae_v_grade_steps": 1.0105262994766235,
+        "within_one_grade": 0.7315789461135864,
+        "exact_accuracy": 0.3368421196937561
       },
       "55": {
         "examples": 48,
-        "mae_v_grade_steps": 1.3125,
-        "within_one_grade": 0.5833333134651184,
-        "exact_accuracy": 0.2291666716337204
+        "mae_v_grade_steps": 1.0625,
+        "within_one_grade": 0.7291666865348816,
+        "exact_accuracy": 0.2916666567325592
       }
     }
   }

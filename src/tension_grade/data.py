@@ -73,6 +73,13 @@ def _configuration_signature(example: RouteExample, *, mirrored: bool) -> str:
     return "|".join(sorted(entries))
 
 
+def configuration_signature(example: RouteExample) -> str:
+    signature = _configuration_signature(example, mirrored=False)
+    if example.source_layout == "mirror":
+        signature = min(signature, _configuration_signature(example, mirrored=True))
+    return signature
+
+
 def split_examples(
     examples: Sequence[RouteExample],
     *,
@@ -85,10 +92,7 @@ def split_examples(
         raise ValueError("Split fractions must leave non-empty train, validation, and test ranges")
     groups: dict[str, list[RouteExample]] = defaultdict(list)
     for example in examples:
-        signature = _configuration_signature(example, mirrored=False)
-        if example.source_layout == "mirror":
-            signature = min(signature, _configuration_signature(example, mirrored=True))
-        groups[signature].append(example)
+        groups[configuration_signature(example)].append(example)
 
     strata: dict[int, list[tuple[str, list[RouteExample]]]] = defaultdict(list)
     for signature, group in groups.items():
@@ -128,11 +132,36 @@ def split_examples(
     return splits
 
 
+def select_pretraining_examples(
+    examples: Sequence[RouteExample],
+    vocabulary: Vocabulary,
+    excluded_examples: Sequence[RouteExample],
+) -> list[RouteExample]:
+    """Keep supported pretraining targets while excluding validation/test configurations."""
+
+    excluded_signatures = {configuration_signature(example) for example in excluded_examples}
+    grade_min = vocabulary.grade_offset
+    grade_max = grade_min + len(vocabulary.grade_labels) - 1
+    return [
+        example
+        for example in examples
+        if example.grade in vocabulary.grade_labels
+        and example.grade_value is not None
+        and grade_min <= example.grade_value <= grade_max
+        and configuration_signature(example) not in excluded_signatures
+    ]
+
+
 def _sample_weight(example: RouteExample) -> float:
     return min(3.0, 1.0 + math.log1p(example.ascents) / 5.0)
 
 
-def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dict[str, Tensor]:
+def collate_routes(
+    batch: Sequence[RouteExample],
+    vocabulary: Vocabulary,
+    *,
+    uncertain_targets: bool = False,
+) -> dict[str, Tensor]:
     max_holds = max(len(example.holds) for example in batch)
     batch_size = len(batch)
     hold_type_ids = torch.zeros((batch_size, max_holds), dtype=torch.long)
@@ -143,11 +172,16 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
     angles = torch.zeros(batch_size, dtype=torch.float32)
     labels = torch.full((batch_size,), -1, dtype=torch.long)
     target_values = torch.full((batch_size,), float("nan"), dtype=torch.float32)
+    target_spreads = torch.zeros(batch_size, dtype=torch.float32)
     weights = torch.ones(batch_size, dtype=torch.float32)
 
     for row, example in enumerate(batch):
         angles[row] = float(example.angle)
         weights[row] = _sample_weight(example)
+        if uncertain_targets and example.ascents < 3:
+            evidence_fraction = max(example.ascents, 1) / 3.0
+            weights[row] *= evidence_fraction
+            target_spreads[row] = 1.0 if example.ascents <= 1 else 0.65
         if example.grade is not None:
             labels[row] = v_grade_index(example.grade) - vocabulary.grade_offset
             target_values[row] = (
@@ -174,5 +208,6 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
         "angles": angles,
         "labels": labels,
         "target_values": target_values,
+        "target_spreads": target_spreads,
         "weights": weights,
     }

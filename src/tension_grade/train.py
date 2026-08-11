@@ -14,7 +14,14 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-from .data import RouteDataset, Vocabulary, collate_routes, split_examples
+from .data import (
+    RouteDataset,
+    Vocabulary,
+    collate_routes,
+    configuration_signature,
+    select_pretraining_examples,
+    split_examples,
+)
 from .model import ModelConfig, TensionGradeTransformer, grade_loss, probabilities
 from .schema import RouteExample, load_jsonl
 
@@ -94,6 +101,33 @@ def breakdown_metrics(
     return result
 
 
+def train_epoch(
+    model: TensionGradeTransformer,
+    loader: Iterable[dict[str, Tensor]],
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+) -> float:
+    model.train()
+    running_loss = 0.0
+    seen = 0
+    for raw_batch in loader:
+        batch = move_batch(raw_batch, device)
+        optimizer.zero_grad(set_to_none=True)
+        logits = forward_batch(model, batch)
+        loss = grade_loss(
+            logits,
+            batch["target_values"],
+            batch["weights"],
+            target_spreads=batch["target_spreads"],
+        )
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+        running_loss += float(loss.item()) * len(batch["labels"])
+        seen += len(batch["labels"])
+    return running_loss / max(seen, 1)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset", type=Path, help="Canonical JSONL dataset")
@@ -108,6 +142,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=192)
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--layers", type=int, default=6)
+    parser.add_argument("--pretrain-dataset", type=Path, required=True)
+    parser.add_argument("--pretrain-epochs", type=int, default=15)
     return parser.parse_args()
 
 
@@ -153,6 +189,50 @@ def main() -> None:
     )
     device = select_device(args.device)
     model = TensionGradeTransformer(config).to(device)
+
+    excluded_examples = validation_examples + test_examples
+    excluded_signatures = {configuration_signature(example) for example in excluded_examples}
+    pretraining_examples = select_pretraining_examples(
+        load_jsonl(args.pretrain_dataset), vocabulary, excluded_examples
+    )
+    if not pretraining_examples:
+        raise ValueError("No leakage-free pretraining examples remain")
+    pretrain_collate = lambda batch: collate_routes(batch, vocabulary, uncertain_targets=True)
+    pretrain_loader = DataLoader(
+        RouteDataset(pretraining_examples),
+        batch_size=args.batch_size,
+        shuffle=True,
+        collate_fn=pretrain_collate,
+        generator=torch.Generator().manual_seed(args.seed),
+    )
+    pretrain_optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
+    )
+    pretrain_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        pretrain_optimizer, T_max=args.pretrain_epochs
+    )
+    evidence_counts = {
+        threshold: sum(example.ascents == threshold for example in pretraining_examples)
+        for threshold in (1, 2)
+    }
+    evidence_counts[3] = sum(example.ascents >= 3 for example in pretraining_examples)
+    print(
+        json.dumps(
+            {
+                "phase": "pretrain_setup",
+                "examples": len(pretraining_examples),
+                "ascents_1": evidence_counts[1],
+                "ascents_2": evidence_counts[2],
+                "ascents_3_plus": evidence_counts[3],
+                "excluded_validation_test_groups": len(excluded_signatures),
+            }
+        )
+    )
+    for epoch in range(1, args.pretrain_epochs + 1):
+        pretrain_loss = train_epoch(model, pretrain_loader, pretrain_optimizer, device)
+        pretrain_scheduler.step()
+        print(json.dumps({"phase": "pretrain", "epoch": epoch, "loss": pretrain_loss}))
+
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
     )
@@ -165,23 +245,7 @@ def main() -> None:
     stopped_epoch = 0
     for epoch in range(1, args.epochs + 1):
         stopped_epoch = epoch
-        model.train()
-        running_loss = 0.0
-        seen = 0
-        for raw_batch in train_loader:
-            batch = move_batch(raw_batch, device)
-            optimizer.zero_grad(set_to_none=True)
-            logits = forward_batch(model, batch)
-            loss = grade_loss(
-                logits,
-                batch["target_values"],
-                batch["weights"],
-            )
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            running_loss += float(loss.item()) * len(batch["labels"])
-            seen += len(batch["labels"])
+        running_loss = train_epoch(model, train_loader, optimizer, device)
         scheduler.step()
 
         validation_logits, validation_labels = collect_logits(model, validation_loader, device)
@@ -190,7 +254,7 @@ def main() -> None:
             json.dumps(
                 {
                     "epoch": epoch,
-                    "train_loss": running_loss / max(seen, 1),
+                    "train_loss": running_loss,
                     **{f"validation_{key}": value for key, value in validation_metrics.items()},
                 }
             )
@@ -235,6 +299,7 @@ def main() -> None:
                 "size": "12x12",
                 "angles": [35, 40, 45, 50, 55],
                 "grade_scale": "V",
+                "training_pipeline": "uncertain pretraining followed by consensus fine-tuning",
                 "training_target": "unrounded community average mapped to soft V-grade labels",
                 "model_inputs": [
                     "hold_type",
@@ -245,7 +310,19 @@ def main() -> None:
                 ],
             },
             "training_args": vars(args)
-            | {"dataset": str(args.dataset), "output": str(args.output)},
+            | {
+                "dataset": str(args.dataset),
+                "pretrain_dataset": str(args.pretrain_dataset),
+                "output": str(args.output),
+            },
+            "pretraining": {
+                "examples": len(pretraining_examples),
+                "ascents_1": evidence_counts[1],
+                "ascents_2": evidence_counts[2],
+                "ascents_3_plus": evidence_counts[3],
+                "excluded_validation_test_groups": len(excluded_signatures),
+                "epochs": args.pretrain_epochs,
+            },
         },
         args.output,
     )

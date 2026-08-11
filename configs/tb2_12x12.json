@@ -10,6 +10,20 @@
     "source": "angle-specific unrounded community difficulty average",
     "encoding": "linear interpolation on the V-grade axis as soft class labels"
   },
+  "training_pipeline": {
+    "pretraining_raw_examples": 49512,
+    "pretraining_used_examples": 44232,
+    "pretraining_epochs": 15,
+    "one_ascent_examples": 18045,
+    "two_ascent_examples": 8710,
+    "three_plus_ascent_examples": 17477,
+    "one_ascent_weight_multiplier": 0.3333333333333333,
+    "two_ascent_weight_multiplier": 0.6666666666666666,
+    "one_ascent_target_spread": 1.0,
+    "two_ascent_target_spread": 0.65,
+    "fine_tuning_examples": 17477,
+    "leakage_rule": "exclude every validation/test input configuration and all of its angles"
+  },
   "model_inputs": [
     "hold_type",
     "orientation",

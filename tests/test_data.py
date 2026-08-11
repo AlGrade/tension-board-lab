@@ -1,4 +1,11 @@
-from tension_grade.data import split_examples
+import pytest
+
+from tension_grade.data import (
+    Vocabulary,
+    collate_routes,
+    select_pretraining_examples,
+    split_examples,
+)
 from tension_grade.schema import HoldNode, RouteExample
 
 
@@ -8,12 +15,16 @@ def example(
     hold_types: tuple[str, ...],
     *,
     source_layout: str = "mirror",
+    grade_value: float | None = None,
+    ascents: int = 0,
 ) -> RouteExample:
     return RouteExample(
         climb_id=climb_id,
         source_layout=source_layout,
         angle=40,
         grade=grade,
+        grade_value=grade_value,
+        ascents=ascents,
         holds=tuple(
             HoldNode(
                 role="hand",
@@ -91,3 +102,35 @@ def test_mirrored_copies_remain_in_one_split() -> None:
         if route.climb_id in {"left", "right"}
     }
     assert len(locations) == 1
+
+
+def test_pretraining_softens_low_evidence_and_excludes_holdouts() -> None:
+    vocabulary = Vocabulary.build(
+        [
+            example("grade-min", "V0", ("0", "100")),
+            example("grade-max", "V8", ("8", "108")),
+        ]
+    )
+    low_evidence = example(
+        "low-evidence",
+        "V5",
+        ("500", "501"),
+        grade_value=5.25,
+        ascents=1,
+    )
+    excluded = example("excluded", "V5", ("900", "901"), grade_value=5.0, ascents=3)
+    excluded_copy = example(
+        "excluded-copy",
+        "V5",
+        ("900", "901"),
+        grade_value=5.0,
+        ascents=1,
+    )
+
+    selected = select_pretraining_examples(
+        [low_evidence, excluded_copy], vocabulary, [excluded]
+    )
+    assert selected == [low_evidence]
+    batch = collate_routes(selected, vocabulary, uncertain_targets=True)
+    assert batch["target_spreads"].item() == pytest.approx(1.0)
+    assert batch["weights"].item() < 0.5

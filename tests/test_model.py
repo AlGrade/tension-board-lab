@@ -25,6 +25,7 @@ def test_model_output_and_loss() -> None:
         logits,
         torch.tensor([2.25, 6.75]),
         torch.ones(2),
+        target_spreads=torch.tensor([1.0, 0.65]),
     )
     assert torch.isfinite(loss)
     loss.backward()
