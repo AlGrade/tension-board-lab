@@ -1,4 +1,4 @@
-"""Dataset preparation and leakage-resistant route splitting."""
+"""Essential-input tensors and leakage-resistant route splitting."""
 
 from __future__ import annotations
 
@@ -13,37 +13,31 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from .grades import v_grade_index, v_grade_span
-from .schema import HOLD_ROLES, SUPPORTED_LAYOUTS, RouteExample
+from .schema import HOLD_ROLES, RouteExample
 
 ROLE_TO_INDEX = {role: index for index, role in enumerate(HOLD_ROLES)}
-LAYOUT_TO_INDEX = {layout: index for index, layout in enumerate(sorted(SUPPORTED_LAYOUTS))}
-MATERIAL_TO_INDEX = {"wood": 0, "plastic": 1}
 
 
 @dataclass(frozen=True)
 class Vocabulary:
-    hold_family_to_index: dict[str, int]
-    variant_to_index: dict[str, int]
+    hold_type_to_index: dict[str, int]
     grade_labels: tuple[str, ...]
     grade_offset: int
 
     @classmethod
     def build(cls, examples: Sequence[RouteExample]) -> Vocabulary:
-        families = sorted({hold.hold_family for route in examples for hold in route.holds})
-        variants = sorted({hold.variant for route in examples for hold in route.holds})
-        hold_family_to_index = {family: index + 1 for index, family in enumerate(families)}
-        variant_to_index = {variant: index + 1 for index, variant in enumerate(variants)}
+        hold_types = sorted({hold.hold_type for route in examples for hold in route.holds})
+        hold_type_to_index = {hold_type: index + 1 for index, hold_type in enumerate(hold_types)}
         grade_indices = [v_grade_index(route.grade) for route in examples if route.grade]
         if not grade_indices:
             raise ValueError("Cannot build a training vocabulary without grades")
         grade_offset = min(grade_indices)
         labels = v_grade_span(grade_offset, max(grade_indices))
-        return cls(hold_family_to_index, variant_to_index, labels, grade_offset)
+        return cls(hold_type_to_index, labels, grade_offset)
 
     def as_dict(self) -> dict[str, object]:
         return {
-            "hold_family_to_index": self.hold_family_to_index,
-            "variant_to_index": self.variant_to_index,
+            "hold_type_to_index": self.hold_type_to_index,
             "grade_labels": list(self.grade_labels),
             "grade_offset": self.grade_offset,
         }
@@ -51,10 +45,9 @@ class Vocabulary:
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> Vocabulary:
         return cls(
-            hold_family_to_index={
-                str(k): int(v) for k, v in dict(raw["hold_family_to_index"]).items()
+            hold_type_to_index={
+                str(key): int(value) for key, value in dict(raw["hold_type_to_index"]).items()
             },
-            variant_to_index={str(k): int(v) for k, v in dict(raw["variant_to_index"]).items()},
             grade_labels=tuple(str(value) for value in raw["grade_labels"]),
             grade_offset=int(raw["grade_offset"]),
         )
@@ -71,19 +64,13 @@ class RouteDataset(Dataset[RouteExample]):
         return self.examples[index]
 
 
-def _configuration_signature(
-    example: RouteExample, *, mirrored: bool, include_layout: bool = True
-) -> str:
+def _configuration_signature(example: RouteExample, *, mirrored: bool) -> str:
     entries: list[str] = []
     for hold in example.holds:
         x = 1.0 - hold.x if mirrored else hold.x
         orientation = (-hold.orientation_degrees) % 360.0 if mirrored else hold.orientation_degrees
-        variant = {"l": "r", "r": "l"}.get(hold.variant, hold.variant) if mirrored else hold.variant
-        entries.append(
-            f"{x:.6f}:{hold.y:.6f}:{hold.role}:{hold.hold_family}:{variant}:{orientation:.1f}"
-        )
-    prefix = f"{example.layout}|" if include_layout else ""
-    return prefix + "|".join(sorted(entries))
+        entries.append(f"{x:.6f}:{hold.y:.6f}:{hold.role}:{hold.hold_type}:{orientation:.1f}")
+    return "|".join(sorted(entries))
 
 
 def split_examples(
@@ -91,25 +78,16 @@ def split_examples(
     *,
     train_fraction: float = 0.8,
     validation_fraction: float = 0.1,
-    include_layout: bool = True,
 ) -> tuple[list[RouteExample], list[RouteExample], list[RouteExample]]:
-    """Split deterministic, grade-stratified hold configurations as indivisible groups.
-
-    UUIDs are not trusted as group identifiers because community members can save
-    the same hold configuration under another name. All angles and exact copies of
-    a hold-role configuration therefore remain in one split.
-    """
+    """Split deterministic input-equivalent configurations as indivisible groups."""
 
     if train_fraction <= 0 or validation_fraction <= 0 or train_fraction + validation_fraction >= 1:
         raise ValueError("Split fractions must leave non-empty train, validation, and test ranges")
     groups: dict[str, list[RouteExample]] = defaultdict(list)
     for example in examples:
-        signature = _configuration_signature(example, mirrored=False, include_layout=include_layout)
-        if example.layout == "mirror":
-            signature = min(
-                signature,
-                _configuration_signature(example, mirrored=True, include_layout=include_layout),
-            )
+        signature = _configuration_signature(example, mirrored=False)
+        if example.source_layout == "mirror":
+            signature = min(signature, _configuration_signature(example, mirrored=True))
         groups[signature].append(example)
 
     strata: dict[int, list[tuple[str, list[RouteExample]]]] = defaultdict(list)
@@ -158,28 +136,22 @@ def _sample_weight(example: RouteExample) -> float:
 def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dict[str, Tensor]:
     max_holds = max(len(example.holds) for example in batch)
     batch_size = len(batch)
-    hold_family_ids = torch.zeros((batch_size, max_holds), dtype=torch.long)
-    variants = torch.zeros((batch_size, max_holds), dtype=torch.long)
-    materials = torch.zeros((batch_size, max_holds), dtype=torch.long)
+    hold_type_ids = torch.zeros((batch_size, max_holds), dtype=torch.long)
     orientations = torch.zeros((batch_size, max_holds, 2), dtype=torch.float32)
     roles = torch.zeros((batch_size, max_holds), dtype=torch.long)
     coordinates = torch.zeros((batch_size, max_holds, 2), dtype=torch.float32)
     mask = torch.zeros((batch_size, max_holds), dtype=torch.bool)
     angles = torch.zeros(batch_size, dtype=torch.float32)
-    layouts = torch.zeros(batch_size, dtype=torch.long)
     labels = torch.full((batch_size,), -1, dtype=torch.long)
     weights = torch.ones(batch_size, dtype=torch.float32)
 
     for row, example in enumerate(batch):
         angles[row] = float(example.angle)
-        layouts[row] = LAYOUT_TO_INDEX[example.layout]
         weights[row] = _sample_weight(example)
         if example.grade is not None:
             labels[row] = v_grade_index(example.grade) - vocabulary.grade_offset
         for column, hold in enumerate(example.holds):
-            hold_family_ids[row, column] = vocabulary.hold_family_to_index.get(hold.hold_family, 0)
-            variants[row, column] = vocabulary.variant_to_index.get(hold.variant, 0)
-            materials[row, column] = MATERIAL_TO_INDEX[hold.material]
+            hold_type_ids[row, column] = vocabulary.hold_type_to_index.get(hold.hold_type, 0)
             radians = math.radians(hold.orientation_degrees)
             orientations[row, column] = torch.tensor(
                 (math.sin(radians), math.cos(radians)), dtype=torch.float32
@@ -189,15 +161,12 @@ def collate_routes(batch: Sequence[RouteExample], vocabulary: Vocabulary) -> dic
             mask[row, column] = True
 
     return {
-        "hold_family_ids": hold_family_ids,
-        "variants": variants,
-        "materials": materials,
+        "hold_type_ids": hold_type_ids,
         "orientations": orientations,
         "roles": roles,
         "coordinates": coordinates,
         "mask": mask,
         "angles": angles,
-        "layouts": layouts,
         "labels": labels,
         "weights": weights,
     }

@@ -1,0 +1,60 @@
+{
+  "dataset": {
+    "examples": 21809,
+    "mirror_examples": 13043,
+    "spray_examples": 8766
+  },
+  "split": {
+    "strategy": "grade-stratified exact model-input groups with Mirror reflection canonicalization",
+    "train_examples": 17477,
+    "validation_examples": 2158,
+    "test_examples": 2174,
+    "train_groups": 12272,
+    "validation_groups": 1535,
+    "test_groups": 1533,
+    "cross_layout_equivalent_groups": 0,
+    "cross_split_duplicate_groups": 0
+  },
+  "model": {
+    "format_version": 4,
+    "parameters": 2851263,
+    "hold_types": 106,
+    "selected_epoch": 12,
+    "stopped_epoch": 24,
+    "temperature": 1.3700000047683716,
+    "inputs": [
+      "hold_type",
+      "orientation",
+      "coordinates",
+      "route_role",
+      "continuous_wall_angle"
+    ]
+  },
+  "test": {
+    "examples": 2174,
+    "mae_v_grade_steps": 1.0280588865280151,
+    "within_one_grade": 0.7364305257797241,
+    "exact_accuracy": 0.32842686772346497,
+    "by_layout": {
+      "mirror": {
+        "examples": 1314,
+        "mae_v_grade_steps": 0.9977169036865234,
+        "within_one_grade": 0.7572298049926758,
+        "exact_accuracy": 0.32952815294265747
+      },
+      "spray": {
+        "examples": 860,
+        "mae_v_grade_steps": 1.0744186639785767,
+        "within_one_grade": 0.7046511769294739,
+        "exact_accuracy": 0.3267441987991333
+      }
+    },
+    "by_angle": {
+      "35": {"examples": 252, "mae_v_grade_steps": 0.9047619104385376},
+      "40": {"examples": 1214, "mae_v_grade_steps": 1.0164744853973389},
+      "45": {"examples": 470, "mae_v_grade_steps": 1.0340425968170166},
+      "50": {"examples": 190, "mae_v_grade_steps": 1.136842131614685},
+      "55": {"examples": 48, "mae_v_grade_steps": 1.4791666269302368}
+    }
+  }
+}

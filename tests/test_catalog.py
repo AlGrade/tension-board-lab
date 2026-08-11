@@ -8,6 +8,7 @@ def test_official_hold_catalog_is_complete_and_unique() -> None:
     with path.open(encoding="utf-8", newline="") as source:
         rows = list(csv.DictReader(source))
     assert len(rows) == 996
+    assert all(row["hold_type"] for row in rows)
     keys = {(row["layout_id"], row["set_id"], row["raw_x"], row["raw_y"]) for row in rows}
     assert len(keys) == len(rows)
     assert Counter((row["layout"], row["material"]) for row in rows) == {

@@ -1,4 +1,4 @@
-layout,layout_id,set_id,material,raw_x,raw_y,x,y,hold_id,hold_family,variant,orientation,orientation_degrees,orientation_sin,orientation_cos
+layout,layout_id,set_id,material,raw_x,raw_y,x,y,hold_id,hold_type,variant,orientation,orientation_degrees,orientation_sin,orientation_cos
 mirror,10,12,wood,-48,4,0.125,0.0,FT,wood:FT,none,S,180.0,0.0,-1.0
 mirror,10,12,wood,-40,4,0.1875,0.0,20D,wood:20D,none,N,0.0,0.0,1.0
 mirror,10,12,wood,-24,4,0.3125,0.0,TDP,wood:TDP,none,N,0.0,0.0,1.0

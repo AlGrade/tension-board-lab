@@ -7,7 +7,7 @@ SELECT
     CASE c.layout_id
         WHEN 10 THEN 'mirror'
         WHEN 11 THEN 'spray'
-    END AS layout,
+    END AS source_layout,
     cs.angle AS angle,
     CASE
         WHEN INSTR(dg.boulder_name, '/') > 0

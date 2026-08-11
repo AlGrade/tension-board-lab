@@ -1,66 +1,48 @@
 # Tension Grade Predictor
 
-A shape-aware graph transformer that predicts an angle-specific V grade for
-Tension Board 2 Mirror and Spray, 12x12, at 35°, 40°, 45°, 50°, or 55°.
+A geometry-aware graph transformer that predicts angle-specific V grades for the
+Tension Board 2 12x12 using one deliberately small input contract.
 
-For a non-technical German explanation of the model, see
+For a non-technical German explanation, see
 [`README_EINFACH_ERKLAERT.md`](README_EINFACH_ERKLAERT.md).
 
-The prediction contract is intentionally small:
+## Input and output
+
+The model receives the wall angle and, for every selected hold:
+
+- `hold_type`: one of 106 physical hold types;
+- `orientation_degrees`: its rotation on the board;
+- `x` and `y`: normalized board coordinates;
+- `role`: `start`, `hand`, `foot`, or `finish`.
+
+It does **not** receive a layout, separate material, left/right variant, placement
+ID, climb name, ascent count, or grade. Mirror and Spray are only source metadata in
+the training dataset and never become model tensors.
+
+The output is intentionally limited to the most likely grade and its calibrated
+class probability:
 
 ```json
-{"predicted_grade":"V7","confidence":0.6812}
+{"predicted_grade":"V8","confidence":0.5128}
 ```
 
-Confidence is the winning class probability after validation-set temperature
-calibration. It is model confidence, not objective certainty about a subjective
-climbing grade.
+Confidence is model confidence, not objective certainty about a subjective grade.
 
-## What the model sees
+## Architecture
 
-Each selected hold is a graph node containing:
+The canonical model has 2,851,263 parameters, width 192, eight attention heads, and
+six graph-transformer blocks. Hold type, orientation, coordinates, and route role
+form one node per selected hold. The continuous angle encoding contains the degree
+value plus sine/cosine terms.
 
-- hold family and left/right variant;
-- wood or plastic material;
-- physical orientation as continuous sine/cosine values;
-- normalized 12x12 board coordinates;
-- its route role (`start`, `hand`, `foot`, or `finish`).
-
-Placement IDs are retained only for traceability and are **not** passed to the
-network. The hold catalog is derived from the official 2024 Mirror and Spray install
-guides and maps each Aurora placement to its labeled hold, material, coordinate, and
-16-step compass orientation.
-
-The wall angle is also a continuous numeric input. Its encoding contains the degree
-value plus sine/cosine terms; it is not a categorical angle ID. Six transformer
-blocks perform attention between all selected holds. Their learned graph bias uses
+Attention between every pair of holds receives a learned geometric bias containing
 horizontal and vertical separation, Euclidean distance, direction, wall-relative
-vertical gain, and overhang depth. Attention pooling and an ordinal-aware classifier
-produce the grade distribution.
-
-Mirror and Spray share the shape embeddings and transformer. A small layout
-embedding lets the network account for systematic layout differences without
-memorizing placement IDs.
-
-### Essential input profile
-
-An optional ablation profile removes the explicit layout, material, and left/right
-variant inputs. It retains only hold family, orientation, coordinates, route role,
-and continuous wall angle. The hold-family namespace still makes material logically
-inferable from the physical hold type, but there is no separate material embedding.
-
-```bash
-tension-train data/processed/tb2_12x12_shapes.jsonl \
-  --input-profile essential \
-  --output checkpoints/tb2_12x12_essential.pt
-```
-
-For this checkpoint, layout, material, and variant may be omitted from prediction
-JSON. See `examples/essential_route.json`.
+vertical gain, and overhang depth. An ordinal-aware classification head returns a
+distribution over V0 through V14.
 
 ## Setup
 
-Python 3.10 or newer is required. From the project directory:
+Python 3.10 or newer is required:
 
 ```bash
 python3.12 -m venv .venv
@@ -68,81 +50,58 @@ source .venv/bin/activate
 python -m pip install -e ".[data,dev]"
 ```
 
-## Database and import
+## Dataset
 
-The project currently uses the existing local Aurora/Tension database snapshot at
-`data/raw/tension.sqlite3`. The database and derived datasets are gitignored. To
-replace the snapshot later, [BoardLib](https://github.com/lemeryfertitta/BoardLib)
-can download the public database bundled with the app:
+The current local database snapshot is `data/raw/tension.sqlite3`. Databases and
+generated datasets are gitignored. The audited importer selects:
 
-```bash
-boardlib database tension data/raw/tension.sqlite3
-```
-
-The audited SQL selects:
-
-- layout 10 (Mirror) and layout 11 (Spray);
-- product size 6 / sets 12 and 13 (12x12 wood and plastic holds);
-- angles 35°, 40°, 45°, 50°, and 55°;
+- Tension Board 2 Mirror and Spray;
+- board size 12x12 with wood and plastic sets;
+- 35°, 40°, 45°, 50°, and 55°;
 - listed, single-frame boulders;
-- community labels backed by at least three ascensionists.
+- angle-specific community grades with at least three ascensionists.
 
-Inspect an unfamiliar database before trusting the mapping:
+The official install-guide catalog maps Aurora placements to hold type, orientation,
+and coordinates. Material and variant remain source-audit columns in that catalog,
+but are discarded when the canonical dataset is written.
 
-```bash
-tension-inspect-db data/raw/tension.sqlite3 --output work/schema.json
-```
-
-Create the canonical shape-enriched dataset:
+Regenerate the only processed dataset:
 
 ```bash
 tension-import-aurora data/raw/tension.sqlite3 \
-  --query configs/aurora_tb2_12x12_shapes.sql \
+  --query configs/aurora_tb2_12x12.sql \
   --catalog configs/tb2_12x12_hold_catalog.csv \
-  --output data/processed/tb2_12x12_shapes.jsonl
+  --output data/processed/tb2_12x12.jsonl
 ```
 
-Each JSONL row is one `(climb, angle)` example. Ascension count weights label
-reliability during training but is never passed to the model as an input.
+The result contains 21,809 `(climb, angle)` examples: 13,043 from Mirror and 8,766
+from Spray. `source_layout`, ascent count, and the target grade are training metadata,
+not prediction inputs.
 
 ## Train
 
 ```bash
-tension-train data/processed/tb2_12x12_shapes.jsonl \
-  --output checkpoints/tb2_12x12_shapes.pt
+tension-train data/processed/tb2_12x12.jsonl \
+  --output checkpoints/tb2_12x12.pt
 ```
 
-Training uses AdamW, cosine decay, gradient clipping, early stopping, an ordinal
-distance penalty, and deterministic grade-stratified group splitting. The group key
-is the hold/role/shape/orientation configuration, not the climb UUID. All angles and
-renamed exact copies remain in one split. Mirror-reflected copies are canonicalized
-too, including left/right hold variants and mirrored orientations.
+Training uses AdamW, cosine learning-rate decay, gradient clipping, early stopping,
+an ordinal distance penalty, and validation-set temperature calibration.
 
-Useful overrides:
-
-```bash
-tension-train data/processed/tb2_12x12_shapes.jsonl \
-  --batch-size 64 --epochs 120 --width 256 --heads 8 --layers 8
-```
+The deterministic split groups the exact inputs seen by the model. All angles,
+renamed copies, and input-equivalent Mirror/Spray configurations remain together.
+Mirror reflections are canonicalized too. The current split contains 17,477 training,
+2,158 validation, and 2,174 test examples with zero shared configuration groups.
 
 ## Predict
 
-A route JSON contains its layout, angle, and enriched selected holds, but no grade.
-See `examples/route.json` for the canonical format.
+See `examples/route.json` for the complete minimal input shape.
 
 ```bash
-tension-predict checkpoints/tb2_12x12_shapes.pt examples/route.json
+tension-predict checkpoints/tb2_12x12.pt examples/route.json
 ```
 
-Only the predicted V grade and calibrated confidence are printed.
-
-For the Essential checkpoint:
-
-```bash
-tension-predict checkpoints/tb2_12x12_essential.pt examples/essential_route.json
-```
-
-## Test
+## Verify
 
 ```bash
 pytest
@@ -151,35 +110,16 @@ ruff check .
 
 ## Current checkpoint
 
-`checkpoints/tb2_12x12_shapes.pt` was trained on 21,809 Mirror and Spray examples
-from the existing database snapshot. Early stopping ended at epoch 25 and selected
-epoch 13. Its untouched, duplicate-safe test results are:
+The canonical checkpoint selected epoch 12 and stopped at epoch 24. On the untouched
+test split it reaches:
 
-- mean absolute error: 1.0455 V-grade steps;
-- within one V-grade step: 73.73%;
-- exact-grade accuracy: 30.73%;
-- Mirror MAE: 1.0606 across 1,271 test examples;
-- Spray MAE: 1.0248 across 929 test examples;
-- confidence temperature: 1.30.
+- mean absolute error: 1.0281 V-grade steps;
+- within one V-grade step: 73.64%;
+- exact-grade accuracy: 32.84%;
+- Mirror MAE: 0.9977 across 1,314 examples;
+- Spray MAE: 1.0744 across 860 examples;
+- confidence temperature: 1.37.
 
-The checkpoint and generated dataset stay gitignored because they are reproducible
-binary artifacts. See `reports/tb2_12x12_shapes.metrics.json` for exact split and
-angle-by-angle metrics.
-
-## Essential-input experiment
-
-The Essential model has 2,851,263 parameters, 106 hold-family embeddings, width 192,
-eight attention heads, and six transformer blocks. It was compared with a Full-input
-control trained with the same seed and architecture on the exact same
-17,413/2,210/2,186 split:
-
-| Model | Test MAE | Within one | Exact |
-| --- | ---: | ---: | ---: |
-| Essential | 1.0206 | 74.89% | 32.11% |
-| Matched Full control | 1.0197 | 74.79% | 32.71% |
-
-The 0.0009 MAE difference is negligible. In this single-seed experiment, explicit
-layout, material, and variant inputs provided no measurable MAE benefit. The
-Essential checkpoint remains separate from the original Full checkpoint. Exact
-specs and breakdowns are in `configs/tb2_12x12_essential.json` and
-`reports/tb2_12x12_essential.metrics.json`.
+The checkpoint is a reproducible, gitignored binary artifact. Exact model specs are
+in `configs/tb2_12x12.json`; the complete evaluation is in
+`reports/tb2_12x12.metrics.json`.

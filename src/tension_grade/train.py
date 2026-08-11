@@ -1,11 +1,11 @@
-"""Training CLI with early stopping and validation-set confidence calibration."""
+"""Train the canonical Essential-input TB2 grade predictor."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import random
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 
 from .data import RouteDataset, Vocabulary, collate_routes, split_examples
 from .model import ModelConfig, TensionGradeTransformer, grade_loss, probabilities
-from .schema import load_jsonl
+from .schema import RouteExample, load_jsonl
 
 
 def select_device(requested: str) -> torch.device:
@@ -35,15 +35,12 @@ def move_batch(batch: dict[str, Tensor], device: torch.device) -> dict[str, Tens
 
 def forward_batch(model: TensionGradeTransformer, batch: dict[str, Tensor]) -> Tensor:
     return model(
-        batch["hold_family_ids"],
-        batch["variants"],
-        batch["materials"],
+        batch["hold_type_ids"],
         batch["orientations"],
         batch["roles"],
         batch["coordinates"],
         batch["mask"],
         batch["angles"],
-        batch["layouts"],
     )
 
 
@@ -64,8 +61,6 @@ def collect_logits(
 
 
 def calibrate_temperature(logits: Tensor, labels: Tensor) -> float:
-    """Fit one bounded scalar without coupling checkpoint loading to an optimizer."""
-
     candidates = torch.linspace(0.5, 3.0, 251)
     losses = torch.stack([F.cross_entropy(logits / value, labels) for value in candidates])
     return float(candidates[losses.argmin()].item())
@@ -84,16 +79,17 @@ def metrics(logits: Tensor, labels: Tensor, temperature: float = 1.0) -> dict[st
 def breakdown_metrics(
     logits: Tensor,
     labels: Tensor,
-    examples: list,
+    examples: Sequence[RouteExample],
     temperature: float,
-) -> dict[str, dict[str, dict[str, float]]]:
-    result: dict[str, dict[str, dict[str, float]]] = {"layout": {}, "angle": {}}
-    for field in ("layout", "angle"):
+) -> dict[str, dict[str, dict[str, float | int]]]:
+    result: dict[str, dict[str, dict[str, float | int]]] = {"layout": {}, "angle": {}}
+    fields = (("layout", "source_layout"), ("angle", "angle"))
+    for output_name, field in fields:
         values = [str(getattr(example, field)) for example in examples]
         for value in sorted(set(values)):
             indices = torch.tensor([index for index, item in enumerate(values) if item == value])
-            result[field][value] = metrics(logits[indices], labels[indices], temperature) | {
-                "examples": float(len(indices))
+            result[output_name][value] = metrics(logits[indices], labels[indices], temperature) | {
+                "examples": len(indices)
             }
     return result
 
@@ -101,7 +97,7 @@ def breakdown_metrics(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset", type=Path, help="Canonical JSONL dataset")
-    parser.add_argument("--output", type=Path, default=Path("checkpoints/tb2_12x12_shapes.pt"))
+    parser.add_argument("--output", type=Path, default=Path("checkpoints/tb2_12x12.pt"))
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
@@ -112,17 +108,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=192)
     parser.add_argument("--heads", type=int, default=8)
     parser.add_argument("--layers", type=int, default=6)
-    parser.add_argument(
-        "--input-profile",
-        choices=("full", "essential"),
-        default="full",
-        help="'essential' excludes layout, material, and left/right variant inputs",
-    )
-    parser.add_argument(
-        "--split-profile",
-        choices=("layout-aware", "layout-agnostic"),
-        help="Override split grouping; defaults to the matching input profile",
-    )
     return parser.parse_args()
 
 
@@ -133,18 +118,12 @@ def main() -> None:
     torch.manual_seed(args.seed)
 
     examples = load_jsonl(args.dataset)
-    use_extra_inputs = args.input_profile == "full"
-    split_includes_layout = (
-        args.split_profile == "layout-aware" if args.split_profile is not None else use_extra_inputs
-    )
-    train_examples, validation_examples, test_examples = split_examples(
-        examples, include_layout=split_includes_layout
-    )
+    train_examples, validation_examples, test_examples = split_examples(examples)
     vocabulary = Vocabulary.build(train_examples)
     for example in validation_examples + test_examples:
         if example.grade not in vocabulary.grade_labels:
             raise ValueError(
-                f"Grade {example.grade} appears outside the training grade span; collect more data or change the split"
+                f"Grade {example.grade} appears outside the training grade span; collect more data"
             )
 
     collate = lambda batch: collate_routes(batch, vocabulary)
@@ -164,15 +143,11 @@ def main() -> None:
     )
 
     config = ModelConfig(
-        num_hold_families=len(vocabulary.hold_family_to_index),
-        num_variants=len(vocabulary.variant_to_index),
+        num_hold_types=len(vocabulary.hold_type_to_index),
         num_grades=len(vocabulary.grade_labels),
         width=args.width,
         heads=args.heads,
         layers=args.layers,
-        use_variant=use_extra_inputs,
-        use_material=use_extra_inputs,
-        use_layout=use_extra_inputs,
     )
     device = select_device(args.device)
     model = TensionGradeTransformer(config).to(device)
@@ -185,7 +160,9 @@ def main() -> None:
     best_state: dict[str, Tensor] | None = None
     best_epoch = 0
     stale_epochs = 0
+    stopped_epoch = 0
     for epoch in range(1, args.epochs + 1):
+        stopped_epoch = epoch
         model.train()
         running_loss = 0.0
         seen = 0
@@ -237,7 +214,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "format_version": 3,
+            "format_version": 4,
             "model_state": best_state,
             "model_config": config.as_dict(),
             "vocabulary": vocabulary.as_dict(),
@@ -245,18 +222,20 @@ def main() -> None:
             "test_metrics": test_metrics,
             "test_breakdown": test_breakdown,
             "selected_epoch": best_epoch,
+            "stopped_epoch": stopped_epoch,
             "scope": {
                 "board": "Tension Board 2",
-                "layouts": ["Mirror", "Spray"],
+                "training_layouts": ["Mirror", "Spray"],
                 "size": "12x12",
                 "angles": [35, 40, 45, 50, 55],
                 "grade_scale": "V",
-                "input_profile": args.input_profile,
-                "hold_features": ["family", "orientation", "coordinates", "role"]
-                + (["variant", "material"] if use_extra_inputs else []),
-                "layout_input": use_extra_inputs,
-                "angle_encoding": "continuous",
-                "split_group_includes_layout": split_includes_layout,
+                "model_inputs": [
+                    "hold_type",
+                    "orientation",
+                    "coordinates",
+                    "route_role",
+                    "continuous_wall_angle",
+                ],
             },
             "training_args": vars(args)
             | {"dataset": str(args.dataset), "output": str(args.output)},
@@ -268,6 +247,7 @@ def main() -> None:
             {
                 "checkpoint": str(args.output),
                 "selected_epoch": best_epoch,
+                "stopped_epoch": stopped_epoch,
                 "temperature": temperature,
                 **test_metrics,
                 "breakdown": test_breakdown,

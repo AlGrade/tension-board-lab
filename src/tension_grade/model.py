@@ -1,4 +1,4 @@
-"""Geometry-biased graph transformer for selected climbing holds."""
+"""Essential-input geometry-biased graph transformer."""
 
 from __future__ import annotations
 
@@ -12,22 +12,16 @@ from torch import Tensor, nn
 
 @dataclass(frozen=True)
 class ModelConfig:
-    num_hold_families: int
-    num_variants: int
+    num_hold_types: int
     num_grades: int
     num_roles: int = 4
-    num_materials: int = 2
-    num_layouts: int = 2
     width: int = 192
     heads: int = 8
     layers: int = 6
     expansion: int = 4
     dropout: float = 0.12
-    use_variant: bool = True
-    use_material: bool = True
-    use_layout: bool = True
 
-    def as_dict(self) -> dict[str, int | float | bool]:
+    def as_dict(self) -> dict[str, int | float]:
         return asdict(self)
 
 
@@ -73,8 +67,6 @@ class GraphAttentionBlock(nn.Module):
         dx, dy = delta.unbind(dim=-1)
         distance = torch.sqrt(dx.square() + dy.square() + 1e-8)
         radians = torch.deg2rad(angles).view(-1, 1, 1)
-        vertical_gain = dy * radians.cos()
-        overhang_depth = dy * radians.sin()
         geometry = torch.stack(
             (
                 dx,
@@ -82,8 +74,8 @@ class GraphAttentionBlock(nn.Module):
                 dx.abs(),
                 dy.abs(),
                 distance,
-                vertical_gain,
-                overhang_depth,
+                dy * radians.cos(),
+                dy * radians.sin(),
                 dy.sign(),
             ),
             dim=-1,
@@ -104,17 +96,8 @@ class TensionGradeTransformer(nn.Module):
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
         self.config = config
-        self.hold_family_embedding = nn.Embedding(config.num_hold_families + 1, config.width)
-        self.variant_embedding = (
-            nn.Embedding(config.num_variants + 1, config.width) if config.use_variant else None
-        )
-        self.material_embedding = (
-            nn.Embedding(config.num_materials, config.width) if config.use_material else None
-        )
+        self.hold_type_embedding = nn.Embedding(config.num_hold_types + 1, config.width)
         self.role_embedding = nn.Embedding(config.num_roles, config.width)
-        self.layout_embedding = (
-            nn.Embedding(config.num_layouts, config.width) if config.use_layout else None
-        )
         self.orientation_embedding = nn.Sequential(
             nn.Linear(2, config.width), nn.GELU(), nn.Linear(config.width, config.width)
         )
@@ -139,39 +122,30 @@ class TensionGradeTransformer(nn.Module):
 
     def forward(
         self,
-        hold_family_ids: Tensor,
-        variants: Tensor,
-        materials: Tensor,
+        hold_type_ids: Tensor,
         orientations: Tensor,
         roles: Tensor,
         coordinates: Tensor,
         mask: Tensor,
         angles: Tensor,
-        layouts: Tensor,
     ) -> Tensor:
         radians = torch.deg2rad(angles)
         angle_features = torch.stack((angles / 90.0, radians.sin(), radians.cos()), dim=-1)
-        global_context = self.angle_embedding(angle_features)
-        if self.layout_embedding is not None:
-            global_context = global_context + self.layout_embedding(layouts)
+        angle_context = self.angle_embedding(angle_features)
         nodes = (
-            self.hold_family_embedding(hold_family_ids)
+            self.hold_type_embedding(hold_type_ids)
             + self.orientation_embedding(orientations)
             + self.role_embedding(roles)
             + self.coordinate_embedding(coordinates)
-            + global_context.unsqueeze(1)
+            + angle_context.unsqueeze(1)
         )
-        if self.variant_embedding is not None:
-            nodes = nodes + self.variant_embedding(variants)
-        if self.material_embedding is not None:
-            nodes = nodes + self.material_embedding(materials)
         nodes = self.input_norm(nodes) * mask.unsqueeze(-1)
         for block in self.blocks:
             nodes = block(nodes, coordinates, mask, angles)
         pool_scores = self.pool_gate(nodes).squeeze(-1)
         pool_scores = pool_scores.masked_fill(~mask, torch.finfo(pool_scores.dtype).min)
         pooled = (pool_scores.softmax(dim=-1).unsqueeze(-1) * nodes).sum(dim=1)
-        return self.head(pooled + global_context)
+        return self.head(pooled + angle_context)
 
 
 def grade_loss(
@@ -180,10 +154,10 @@ def grade_loss(
     """Categorical loss plus an ordinal penalty for far-away grade predictions."""
 
     categorical = F.cross_entropy(logits, targets, label_smoothing=0.04, reduction="none")
-    probabilities = logits.softmax(dim=-1)
+    predicted_probabilities = logits.softmax(dim=-1)
     grade_axis = torch.arange(logits.shape[-1], device=logits.device, dtype=logits.dtype)
     distance = (grade_axis.unsqueeze(0) - targets.unsqueeze(1)).abs()
-    ordinal = (probabilities * distance).sum(dim=-1)
+    ordinal = (predicted_probabilities * distance).sum(dim=-1)
     losses = categorical + distance_weight * ordinal
     return (losses * weights).sum() / weights.sum().clamp_min(1e-8)
 

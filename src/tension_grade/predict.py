@@ -1,4 +1,4 @@
-"""Predict a V grade and calibrated confidence from one canonical route JSON file."""
+"""Predict a V grade and calibrated confidence from one Essential route JSON file."""
 
 from __future__ import annotations
 
@@ -14,28 +14,10 @@ from .schema import RouteExample
 from .train import forward_batch, move_batch, select_device
 
 
-def route_for_model(raw: dict, config: ModelConfig) -> RouteExample:
-    """Fill arbitrary placeholders for fields disabled by this checkpoint."""
-
-    normalized = dict(raw)
-    if not config.use_layout:
-        normalized["layout"] = "mirror"
-    holds = []
-    for raw_hold in raw["holds"]:
-        hold = dict(raw_hold)
-        if not config.use_variant:
-            hold["variant"] = "none"
-        if not config.use_material:
-            hold["material"] = "wood"
-        holds.append(hold)
-    normalized["holds"] = holds
-    return RouteExample.from_dict(normalized, require_grade=False)
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("checkpoint", type=Path)
-    parser.add_argument("route", type=Path, help="JSON route without a grade field")
+    parser.add_argument("route", type=Path, help="Essential route JSON without a grade")
     parser.add_argument("--device", default="auto")
     return parser.parse_args()
 
@@ -51,18 +33,21 @@ def main() -> None:
     model.to(device).eval()
 
     with args.route.open(encoding="utf-8") as source:
-        route = route_for_model(json.load(source), config)
+        route = RouteExample.from_dict(json.load(source), require_grade=False)
     batch = move_batch(collate_routes([route], vocabulary), device)
     with torch.no_grad():
         distribution = probabilities(
             forward_batch(model, batch), float(checkpoint.get("temperature", 1.0))
         )[0]
     predicted_index = int(distribution.argmax().item())
-    result = {
-        "predicted_grade": vocabulary.grade_labels[predicted_index],
-        "confidence": round(float(distribution[predicted_index].item()), 4),
-    }
-    print(json.dumps(result))
+    print(
+        json.dumps(
+            {
+                "predicted_grade": vocabulary.grade_labels[predicted_index],
+                "confidence": round(float(distribution[predicted_index].item()), 4),
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

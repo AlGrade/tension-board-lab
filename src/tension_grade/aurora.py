@@ -89,14 +89,10 @@ def _parse_frame(
         metadata = placements[placement]
         holds.append(
             HoldNode(
-                placement_id=placement,
                 role=roles[role_id],
                 x=float(metadata["x"]),
                 y=float(metadata["y"]),
-                hold_id=str(metadata["hold_id"]),
-                hold_family=str(metadata["hold_family"]),
-                variant=str(metadata["variant"]),
-                material=str(metadata["material"]),
+                hold_type=str(metadata["hold_type"]),
                 orientation_degrees=float(metadata["orientation_degrees"]),
             )
         )
@@ -123,7 +119,7 @@ def _load_hold_catalog(path: Path) -> dict[tuple[int, int, int, int], dict[str, 
 def import_with_query(database: Path, query_file: Path, catalog_file: Path, output: Path) -> int:
     """Run a schema-specific SELECT and convert its rows to canonical JSONL.
 
-    The route query must return layout, climb_id, angle, grade, and frames. Optional
+    The route query must return source_layout, climb_id, angle, grade, and frames. Optional
     columns are ascents, votes, and group_id. The placement query after the
     ``-- placements`` separator must return placement_id, layout_id, set_id, raw_x,
     raw_y, x, and y so every placement can be joined to the audited hold catalog.
@@ -165,7 +161,7 @@ def import_with_query(database: Path, query_file: Path, catalog_file: Path, outp
             RouteExample.from_dict(
                 {
                     "climb_id": raw["climb_id"],
-                    "layout": raw["layout"],
+                    "source_layout": raw["source_layout"],
                     "angle": raw["angle"],
                     "grade": raw["grade"],
                     "ascents": raw.get("ascents", 0),
@@ -186,9 +182,7 @@ def import_main() -> None:
     parser.add_argument("database", type=Path)
     parser.add_argument("--query", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, default=Path("configs/tb2_12x12_hold_catalog.csv"))
-    parser.add_argument(
-        "--output", type=Path, default=Path("data/processed/tb2_12x12_shapes.jsonl")
-    )
+    parser.add_argument("--output", type=Path, default=Path("data/processed/tb2_12x12.jsonl"))
     args = parser.parse_args()
     count = import_with_query(args.database, args.query, args.catalog, args.output)
     print(json.dumps({"examples": count, "output": str(args.output)}))

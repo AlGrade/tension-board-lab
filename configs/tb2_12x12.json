@@ -1,27 +1,30 @@
 {
-  "name": "TB2 12x12 Essential Input Transformer",
+  "name": "TB2 12x12 Grade Transformer",
   "board": "Tension Board 2",
-  "training_layouts": ["Mirror", "Spray"],
-  "layout_is_model_input": false,
+  "training_sources": ["Mirror", "Spray"],
   "size": "12x12",
   "angles": [35, 40, 45, 50, 55],
   "angle_encoding": "continuous degrees plus sine/cosine",
   "grade_scale": "V0-V14",
-  "inputs": {
-    "hold_family": true,
-    "orientation": true,
-    "coordinates": true,
-    "route_role": true,
-    "wall_angle": true,
-    "layout": false,
-    "material": false,
-    "left_right_variant": false,
-    "placement_id": false
-  },
+  "model_inputs": [
+    "hold_type",
+    "orientation",
+    "coordinates",
+    "route_role",
+    "wall_angle"
+  ],
+  "excluded_inputs": [
+    "layout",
+    "material",
+    "left_right_variant",
+    "placement_id",
+    "climb_name",
+    "ascents"
+  ],
   "architecture": {
     "type": "geometry-biased graph transformer",
     "parameters": 2851263,
-    "hold_families": 106,
+    "hold_types": 106,
     "width": 192,
     "attention_heads": 8,
     "transformer_layers": 6,

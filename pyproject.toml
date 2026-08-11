@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tension-grade-predictor"
 version = "0.1.0"
-description = "Board-aware graph transformer for Tension Board 2 grade prediction"
+description = "Essential-input graph transformer for Tension Board 2 grade prediction"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
