@@ -3,6 +3,9 @@
 A shape-aware graph transformer that predicts an angle-specific V grade for
 Tension Board 2 Mirror and Spray, 12x12, at 35°, 40°, 45°, 50°, or 55°.
 
+For a non-technical German explanation of the model, see
+[`README_EINFACH_ERKLAERT.md`](README_EINFACH_ERKLAERT.md).
+
 The prediction contract is intentionally small:
 
 ```json
