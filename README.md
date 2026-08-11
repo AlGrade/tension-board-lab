@@ -12,8 +12,8 @@ consensus grade at that particular angle, not an objective measure of difficulty
 flowchart LR
     A["Wall angle<br/>e.g. 45°"] --> C
     B["Selected holds<br/>type · rotation · position · role"] --> C["Graph Transformer"]
-    C --> D["Predicted grade<br/>V8"]
-    C --> E["Confidence<br/>51%"]
+    C --> D["Predicted grade"]
+    C --> E["Confidence"]
 ```
 
 ## What the model learns from
