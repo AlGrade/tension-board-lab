@@ -3,8 +3,12 @@
 A React app that runs both models in the browser. No backend: the ONNX graphs and their
 supporting JSON are static files.
 
-Today it renders the board, lets you build a problem by clicking holds, and scores it live with
-the grade critic. Generation is the next step—see [`docs/roadmap.md`](../docs/roadmap.md).
+Ask for a grade, an angle, and a style and it samples twelve candidates, scores them with the
+critic, and shows them ranked. Or build a problem by clicking holds and it grades that. Either
+way you can edit what is on the board and watch the grade move.
+
+The generator is loaded on first use rather than at startup: it is a separate 3.7 MB, and
+someone who only wants to grade a problem they built should not pay for it.
 
 ## Running it
 
@@ -32,9 +36,10 @@ production bundle.
 ```
 src/style.ts        mirror of style.py
 src/types.ts        shapes shared with the exported artifacts
-src/model/          featurization and the onnxruntime-web sessions
+src/model/          featurization, tokenizer, and the onnxruntime-web sessions
+src/generate/       constraint masks and the sampling loop
 src/board/          SVG renderer
-test/               parity against fixtures recorded from PyTorch
+test/               parity against fixtures recorded from Python
 ```
 
 ## Parity is the whole game
@@ -48,7 +53,17 @@ them:
 - [`test/critic.test.ts`](test/critic.test.ts) — the whole chain, featurizer through the ONNX
   graph, against PyTorch's logits;
 - [`test/style.test.ts`](test/style.test.ts) — features, buckets, and preset distances against
-  what `style.py` computed.
+  what `style.py` computed;
+- [`test/tokenizer.test.ts`](test/tokenizer.test.ts) — token sequences, conditioning prefixes,
+  and constraint masks, the last of these token for token;
+- [`test/sample.test.ts`](test/sample.test.ts) — samples from the real generator graph and
+  asserts every problem satisfies every rule.
+
+The sampling loop itself cannot be compared step for step, because the two sides draw from
+different random number generators. So the pieces it is built from are compared instead, which
+is what caught an off-by-one in the "any" style slot: this side used `len(edges)` where Python
+uses `bucket_count`, and every unspecified style feature pointed at the wrong token. Nothing
+would have thrown.
 
 The details that actually cause silent drift, all covered above:
 

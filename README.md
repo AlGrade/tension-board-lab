@@ -10,7 +10,7 @@ which ones belong to a problem.
 | --- | --- | --- |
 | Data pipeline and grade predictor | Working | [`src/tension_board_lab/`](src/tension_board_lab/README.md) |
 | Boulder problem generator | Working | [`src/tension_board_lab/`](src/tension_board_lab/README.md) |
-| Web application | In progress | [`web/`](web/README.md) |
+| Web application | Working | [`web/`](web/README.md) |
 
 The **grade predictor** takes a wall angle and a set of selected holds and returns a V grade
 with a confidence—for example, `V9` with `38%`. On its untouched test split of 2,174 examples
@@ -22,9 +22,9 @@ The **generator** proposes new problems for a requested grade, angle, and style,
 predictor as an independent critic. Every sampled problem is valid by construction, and none of
 480 evaluated samples reproduced a problem from the corpus.
 
-The **web application** runs both models in the browser with no backend. It renders the board,
-scores a problem as you edit it, and is tested for exact parity with the Python featurization.
-Generation moves into the UI next; see [`docs/roadmap.md`](docs/roadmap.md).
+The **web application** runs both models in the browser with no backend. Ask it for a grade,
+an angle, and a style and it samples candidates, ranks them with the critic, and lets you edit
+the result while the grade updates. It is tested for exact parity with the Python side.
 
 ## Setup
 

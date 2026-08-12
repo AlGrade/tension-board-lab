@@ -287,11 +287,38 @@ runtime is another **6.4 MB gzipped** on top—this plan only ever counted the m
 the generator lazily, when someone first asks for a problem, keeps the initial load to the
 critic alone.
 
-### Step 5: sampling UI
+### Step 5: sampling UI — done
 
 Inputs for grade, angle, style, and layout; a generate action; the result with its grade and
 confidence; a *next suggestion* button; and an editor that toggles individual holds with live
 re-scoring by the critic.
+
+The sampling loop is a mirror of [sample.py](../src/tension_board_lab/generator/sample.py),
+with the conditional and unconditional rows batched together so guidance costs one model call
+per step rather than two.
+
+Driven in a real browser: asking for a **V6 dyno** produced a problem the critic scores at an
+expected **V6.02**, *next suggestion* moved to another candidate at V6.58, and editing a hold
+re-scored it live. No console errors.
+
+**The generator is loaded on first use, not at startup.** Nothing generator-shaped is fetched
+until the button is clicked; someone who only wants to grade a problem they built never pays
+the extra 3.7 MB.
+
+Parity is checked piece by piece rather than end to end, because the two sides draw from
+different random number generators: `tension-export-web` records token sequences, conditioning
+prefixes, and constraint masks, and `test/tokenizer.test.ts` matches all of them exactly —
+including the masks token for token. `test/sample.test.ts` then samples from the real graph and
+asserts every problem is valid.
+
+That paid for itself immediately: the mask fixtures caught an off-by-one in the "any" style
+slot. TypeScript used `len(edges)` where Python uses `bucket_count`, so every unspecified style
+feature pointed at the wrong token. Nothing would have thrown; generation would just have been
+quietly mis-conditioned.
+
+One honest wrinkle in the UI: the headline grade is the critic's argmax while the ranking uses
+its expectation, so a problem ranked as V6.02 can be labelled V5 at 27% confidence. Both
+numbers are shown rather than one being hidden.
 
 ### Step 6 (optional, last): Web Bluetooth
 

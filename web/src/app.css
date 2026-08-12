@@ -195,3 +195,32 @@ code {
   border-radius: 4px;
   font-size: 0.9em;
 }
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.actions button {
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--ink);
+  color: var(--page);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actions button.secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 500;
+}
+
+.actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

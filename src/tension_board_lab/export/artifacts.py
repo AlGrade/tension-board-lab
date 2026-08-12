@@ -19,6 +19,11 @@ import torch
 from ..catalog import DEFAULT_CATALOG_PATH, HoldCatalog
 from ..data import ROLE_TO_INDEX, Vocabulary, collate_routes
 from ..generator import constraints as generator_constraints
+from ..generator.constraints import (
+    MAX_START_HEIGHT,
+    MIN_FINISH_HEIGHT,
+    BoulderConstraints,
+)
 from ..generator.tokenizer import (
     BOS,
     EOS,
@@ -28,6 +33,8 @@ from ..generator.tokenizer import (
     PREFIX_LENGTH,
     UNCOND,
     GeneratorVocabulary,
+    encode,
+    encode_prefix,
 )
 from ..grade.model import ModelConfig, TensionGradeTransformer
 from ..grade.train import forward_batch
@@ -175,6 +182,86 @@ def parity_fixtures(
     return fixtures
 
 
+def generator_fixtures(
+    examples: list[RouteExample],
+    vocabulary: GeneratorVocabulary,
+    catalog: HoldCatalog,
+) -> dict[str, Any]:
+    """Token sequences, prefixes, and constraint masks for the TypeScript mirror to match.
+
+    The sampling loop cannot be compared step for step—the two sides draw from different
+    random number generators—so the pieces it is built from are compared instead.
+    """
+
+    sequences = [
+        {
+            "problem": example.as_dict(),
+            "tokens": list(encode(example, vocabulary, catalog)),
+            "unconditional": list(encode(example, vocabulary, catalog, unconditional=True)),
+            "style_unspecified": list(
+                encode(
+                    example,
+                    vocabulary,
+                    catalog,
+                    style=(None,) * len(FEATURE_NAMES),
+                )
+            ),
+        }
+        for example in examples
+        if example.source_layout is not None and example.grade is not None
+    ]
+
+    prefixes = []
+    for layout in vocabulary.layouts:
+        for angle, grade, preset in (
+            (35, "V2", None),
+            (40, "V5", "power"),
+            (55, "V10", "dyno"),
+        ):
+            style = PRESETS[preset].conditioning_buckets() if preset else None
+            prefixes.append(
+                {
+                    "layout": layout,
+                    "angle": angle,
+                    "grade": grade,
+                    "preset": preset,
+                    "tokens": list(
+                        encode_prefix(
+                            vocabulary, layout=layout, angle=angle, grade=grade, style=style
+                        )
+                    ),
+                }
+            )
+
+    # Constraint masks at the states the sampler actually passes through.
+    layout = vocabulary.layouts[0]
+    rules = BoulderConstraints(vocabulary, catalog, layout)
+    on_layout = [p for p in vocabulary.positions if catalog.contains(layout, *p)]
+    low = next(p for p in on_layout if p[1] <= MAX_START_HEIGHT)
+    high = next(p for p in reversed(on_layout) if p[1] >= MIN_FINISH_HEIGHT)
+    states: list[dict[str, Any]] = [
+        {"name": "empty", "chosen": []},
+        {"name": "one_start", "chosen": [vocabulary.hold_token(low, "start")]},
+        {
+            "name": "start_and_finish",
+            "chosen": [
+                vocabulary.hold_token(low, "start"),
+                vocabulary.hold_token(high, "finish"),
+            ],
+        },
+    ]
+    for state in states:
+        mask = rules.mask_for(state["chosen"])
+        state["allowed"] = [index for index, value in enumerate(mask.tolist()) if value]
+
+    return {
+        "layout": layout,
+        "sequences": sequences,
+        "prefixes": prefixes,
+        "mask_states": states,
+    }
+
+
 def select_fixture_examples(path: Path, count: int) -> list[RouteExample]:
     """A spread of hold counts, so the fixtures exercise short and long problems."""
 
@@ -279,13 +366,16 @@ def main() -> None:
         args.output / "critic.json", critic_artifact(critic_checkpoint, critic_vocabulary)
     )
 
+    generator_vocabulary: GeneratorVocabulary | None = None
     if args.generator.exists():
         generator_checkpoint = torch.load(
             args.generator, map_location="cpu", weights_only=False
         )
+        generator_vocabulary = GeneratorVocabulary.from_dict(
+            generator_checkpoint["vocabulary"]
+        )
         written["generator.json"] = write_json(
-            args.output / "generator.json",
-            generator_artifact(GeneratorVocabulary.from_dict(generator_checkpoint["vocabulary"])),
+            args.output / "generator.json", generator_artifact(generator_vocabulary)
         )
 
     if args.fixtures_dataset.exists() and args.fixtures > 0:
@@ -302,6 +392,15 @@ def main() -> None:
                 "cases": parity_fixtures(examples, model, critic_vocabulary),
             },
         )
+        if generator_vocabulary is not None:
+            written["generator_fixtures.json"] = write_json(
+                args.output / "generator_fixtures.json",
+                {
+                    "comment": "Token sequences, prefixes, and constraint masks the "
+                    "TypeScript sampler must reproduce.",
+                    **generator_fixtures(examples, generator_vocabulary, catalog),
+                },
+            )
 
     if args.database is not None:
         written["bluetooth.json"] = write_json(
