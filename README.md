@@ -68,6 +68,7 @@ reports/<model>/       evaluation reports
 examples/              example input for tension-predict
 src/tension_board_lab/ the Python package
 tests/                 test suite, mirroring the package
+web/public/            exported ONNX graphs and JSON artifacts (git-ignored)
 ```
 
 Inside the package, the modules every model needs—the problem schema, the grade axis, the
@@ -76,5 +77,6 @@ subpackage below them: [`grade/`](src/tension_board_lab/grade/) today, `generato
 `export/` when they arrive. `checkpoints/` and `reports/` are split by model the same way, so
 two models never contend for one filename.
 
-Board databases, generated datasets, and trained checkpoints are intentionally kept out of
-Git—the databases may contain account-derived or licensed data.
+Board databases, generated datasets, trained checkpoints, and the exported web artifacts are
+intentionally kept out of Git—the databases may contain account-derived or licensed data, and
+everything else on that list is reproducible from them with a documented command.

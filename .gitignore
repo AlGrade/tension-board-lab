@@ -23,6 +23,9 @@ checkpoints/*
 *.env
 
 # Web application: dependencies, build output, and exported model artifacts.
+# Everything under public/ is produced by tension-export-onnx and tension-export-web, and
+# some of it (parity fixtures, the placement-id table) derives from the board database.
 web/node_modules/
 web/dist/
 web/public/models/
+web/public/data/

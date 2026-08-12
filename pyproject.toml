@@ -15,6 +15,10 @@ dependencies = [
 
 [project.optional-dependencies]
 data = ["boardlib>=0.15,<0.16"]
+export = [
+  "onnx>=1.16,<2",
+  "onnxruntime>=1.18,<2",
+]
 dev = [
   "pytest>=8,<9",
   "ruff>=0.9,<1",
@@ -27,6 +31,8 @@ tension-train-grade = "tension_board_lab.grade.train:main"
 tension-predict = "tension_board_lab.grade.predict:main"
 tension-train-generator = "tension_board_lab.generator.train:main"
 tension-sample = "tension_board_lab.generator.sample:main"
+tension-export-onnx = "tension_board_lab.export.onnx:main"
+tension-export-web = "tension_board_lab.export.artifacts:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

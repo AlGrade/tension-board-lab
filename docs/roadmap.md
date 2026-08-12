@@ -220,27 +220,40 @@ One caveat on grade fidelity: the critic is the judge, so it measures agreement 
 critic, not ground truth. It is still meaningful, because the generator never saw the critic's
 holdout configurations.
 
-### Step 3: export
+### Step 3: export — done
 
-`export/onnx.py` (`tension-export-onnx`) for both models, and `export/artifacts.py`
-(`tension-export-web`) for the hold catalog JSON, the vocabulary, `grade_labels`, the
-calibration temperature of 1.67, and the `placement_id` table.
+[export/onnx.py](../src/tension_board_lab/export/onnx.py) (`tension-export-onnx`) for both
+models, and [export/artifacts.py](../src/tension_board_lab/export/artifacts.py)
+(`tension-export-web`) for the board catalog, both vocabularies, `grade_labels`, the
+calibration temperature of 1.67 (confirmed), the style constants, the JS/Python parity
+fixtures, and the `placement_id` table.
 
-Known pitfalls when exporting the critic:
+The int8 download is **3.10 MB for the critic and 3.69 MB for the generator, 6.79 MB
+together**—a little above the 6 MB estimated here. Quantization costs little: over 200 real
+problems the int8 critic agrees with fp32 on 98.0% of predicted grades, and
+`examples/route.json` still reads V9.
 
-- **Do not quantize to fp16.** `masked_fill` uses `torch.finfo(dtype).min`
-  ([model.py:86](../src/tension_board_lab/grade/model.py#L86),
-  [model.py:145](../src/tension_board_lab/grade/model.py#L145)); in fp16 that overflows to NaN.
-  Use int8 or fp32, or change the constant to `-1e4` before exporting.
-- Set dynamic axes for both batch **and** node count, or the exporter bakes in the tracing
-  shapes ([model.py:57](../src/tension_board_lab/grade/model.py#L57)).
-- The `mask` input is bool ([data.py:171](../src/tension_board_lab/data.py#L171)). An export wrapper
-  with a float mask is cleaner.
-- [`forward_batch`](../src/tension_board_lab/grade/train.py#L43) already defines the exact six-input
-  signature and its order.
+Pitfalls, as they actually turned out:
+
+- Set dynamic axes for both batch **and** the variable length, or the exporter bakes in the
+  shapes it traced. Real, and the reason parity is checked at 2, 10, and 35 holds.
+- The `mask` input is bool ([data.py:171](../src/tension_board_lab/data.py#L171)). Real: the
+  export wrapper takes a float mask and thresholds it inside the graph.
+- [`forward_batch`](../src/tension_board_lab/grade/train.py#L43) defines the exact six-input
+  signature and its order. Real, and `critic.json` records it for the web side.
+- **`aten::deg2rad` has no ONNX symbolic function** and blocks the export outright. Not
+  anticipated. [grade/model.py](../src/tension_board_lab/grade/model.py) now multiplies by a
+  constant, which is the same operation; the critic still returns `V9 / 0.3832`.
+- **fp16 was a false alarm.** This plan predicted that `masked_fill` with
+  `torch.finfo(dtype).min` would overflow to NaN in half precision. Measured on both trained
+  models it does not: PyTorch's softmax subtracts the row maximum and saturates, giving logits
+  within 0.01 of fp32 and identical argmaxes. int8 remains the right choice on size alone, so
+  nothing changes in practice. onnxruntime-web's fp16 kernels are a separate implementation and
+  would need their own check before anyone relies on this.
 
 Coordinate inversion for rendering and Bluetooth, since normalization lives only in the SQL:
-`raw_x = x * 128 - 64` and `raw_y = y * 136 + 4`.
+`raw_x = x * 128 - 64` and `raw_y = y * 136 + 4`. Emitted in `board.json` so the web side never
+recomputes it.
 
 ### Step 4: React app
 

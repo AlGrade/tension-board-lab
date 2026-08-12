@@ -8,6 +8,10 @@ from dataclasses import asdict, dataclass
 import torch
 from torch import Tensor, nn
 
+# Spelled as a multiplication rather than torch.deg2rad: the ONNX exporter has no symbolic
+# function for aten::deg2rad, and this is the same operation.
+DEGREES_TO_RADIANS = math.pi / 180.0
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -65,7 +69,7 @@ class GraphAttentionBlock(nn.Module):
         delta = coordinates[:, :, None, :] - coordinates[:, None, :, :]
         dx, dy = delta.unbind(dim=-1)
         distance = torch.sqrt(dx.square() + dy.square() + 1e-8)
-        radians = torch.deg2rad(angles).view(-1, 1, 1)
+        radians = (angles * DEGREES_TO_RADIANS).view(-1, 1, 1)
         geometry = torch.stack(
             (
                 dx,
@@ -128,7 +132,7 @@ class TensionGradeTransformer(nn.Module):
         mask: Tensor,
         angles: Tensor,
     ) -> Tensor:
-        radians = torch.deg2rad(angles)
+        radians = angles * DEGREES_TO_RADIANS
         angle_features = torch.stack((angles / 90.0, radians.sin(), radians.cos()), dim=-1)
         angle_context = self.angle_embedding(angle_features)
         nodes = (

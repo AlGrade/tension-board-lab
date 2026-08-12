@@ -227,3 +227,41 @@ most 21 holds against the corpus 35. Technical steering is weak at 3.1% for exac
 reason: the preset needs a high foot-to-hand ratio. Grade fidelity is agreement with the
 critic, not with ground truth. The full report is in
 [`../../reports/generator/tb2_12x12.metrics.json`](../../reports/generator/tb2_12x12.metrics.json).
+
+## Exporting for the browser
+
+Both models go to ONNX, and everything else the frontend needs goes to JSON. Install the extra
+first: `python -m pip install -e ".[export]"`.
+
+```bash
+tension-export-onnx
+tension-export-web --database data/raw/tension.sqlite3
+```
+
+The int8 graphs are 3.10 MB for the critic and 3.69 MB for the generator. Quantization is
+close to free: over 200 real problems the int8 critic agrees with fp32 on 98.0% of predicted
+grades, and the fp32 graph matches PyTorch to about 1e-6.
+
+| Artifact | Contents |
+| --- | --- |
+| `models/*.onnx`, `models/*.int8.onnx` | Both graphs, dynamic in batch and length |
+| `data/board.json` | Every placement per layout, with raw coordinates and Aurora's role colors |
+| `data/critic.json` | Hold-type indices, grade labels, temperature, and the input contract |
+| `data/generator.json` | Token vocabulary, special tokens, and the sampling constraints |
+| `data/style.json` | Feature names, bucket edges, scales, and presets |
+| `data/fixtures.json` | Real problems with the tensors and logits PyTorch produced for them |
+| `data/bluetooth.json` | Placement ids for the wall frames; needs `--database` |
+
+Everything under `web/public/` is generated and git-ignored, like `checkpoints/` and
+`data/processed/`. The fixtures and the placement-id table derive from the board database.
+
+`fixtures.json` exists because the frontend has to reproduce `collate_routes` exactly, and a
+mismatch there produces wrong grades rather than errors. Testing the TypeScript featurizer
+against these recorded tensors turns the most error-prone part of the project into a checkable
+one.
+
+On precision: `--precision` offers fp32 and int8. The plan expected fp16 to break, because both
+models mask attention with `torch.finfo(dtype).min`. Measured, it does not—PyTorch's softmax
+subtracts the row maximum and saturates, so fp16 logits land within 0.01 of fp32 with identical
+argmaxes. int8 is still preferred, at a quarter of the size. Note that onnxruntime-web's fp16
+kernels are a different implementation and untested here.
