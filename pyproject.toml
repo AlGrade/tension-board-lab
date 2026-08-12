@@ -31,6 +31,7 @@ tension-train-grade = "tension_board_lab.grade.train:main"
 tension-predict = "tension_board_lab.grade.predict:main"
 tension-train-generator = "tension_board_lab.generator.train:main"
 tension-sample = "tension_board_lab.generator.sample:main"
+tension-eval-generator = "tension_board_lab.generator.evaluate:main"
 tension-export-onnx = "tension_board_lab.export.onnx:main"
 tension-export-web = "tension_board_lab.export.artifacts:main"
 

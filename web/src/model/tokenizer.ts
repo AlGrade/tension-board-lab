@@ -1,12 +1,11 @@
 /**
  * Mirror of `generator/tokenizer.py`.
  *
- * A sequence is `[BOS] layout angle grade style x7 | hold ... hold | [EOS]`. The prefix has a
+ * A sequence is `[BOS] layout angle grade | hold ... hold | [EOS]`. The prefix has a
  * fixed width so guidance can blank it without shifting the holds, and a hold token carries
  * only `(position, role)` — type and orientation come from the board catalog.
  */
 
-import { PYTHON_FEATURE_NAMES, FEATURE_NAMES, type FeatureName } from "../style";
 import {
   HOLD_ROLES,
   ROLE_TO_INDEX,
@@ -14,7 +13,6 @@ import {
   type GeneratorArtifact,
   type Hold,
   type HoldRole,
-  type StyleArtifact,
 } from "../types";
 
 const COORDINATE_PRECISION = 6;
@@ -34,12 +32,8 @@ export class GeneratorVocabulary {
   readonly maxSequenceLength: number;
 
   private readonly positionIndex = new Map<string, number>();
-  private readonly styleSlots: number[];
 
-  constructor(
-    private readonly artifact: GeneratorArtifact,
-    private readonly style: StyleArtifact,
-  ) {
+  constructor(private readonly artifact: GeneratorArtifact) {
     const { special_tokens } = artifact;
     this.pad = special_tokens.pad;
     this.bos = special_tokens.bos;
@@ -53,10 +47,6 @@ export class GeneratorVocabulary {
     artifact.vocabulary.positions.forEach(([x, y], index) => {
       this.positionIndex.set(positionKey(x, y), index);
     });
-    // Buckets per feature, plus the "any" slot the Python side appends.
-    this.styleSlots = FEATURE_NAMES.map(
-      (name) => style.bucket_edges[PYTHON_FEATURE_NAMES[name]].length + 1,
-    );
   }
 
   get positions(): [number, number][] {
@@ -89,22 +79,6 @@ export class GeneratorVocabulary {
     return this.artifact.vocabulary.grade_offset + index;
   }
 
-  /**
-   * `null` means unspecified and maps to the slot just past the real buckets.
-   *
-   * A feature with `n` edges has `n + 1` buckets numbered `0..n`, so "any" is `n + 1` — the
-   * same as Python's `bucket_count(feature)`, not `len(edges)`.
-   */
-  styleToken(feature: FeatureName, bucket: number | null): number {
-    const index = FEATURE_NAMES.indexOf(feature);
-    const anySlot = this.styleSlots[index];
-    const resolved = bucket === null ? anySlot : bucket;
-    if (resolved < 0 || resolved > anySlot) {
-      throw new Error(`Bucket ${bucket} is out of range for ${feature}`);
-    }
-    return this.artifact.vocabulary.style_offsets[index] + resolved;
-  }
-
   positionIndexOf(x: number, y: number): number {
     const index = this.positionIndex.get(positionKey(x, y));
     if (index === undefined) throw new Error(`Position ${x},${y} is not on the board`);
@@ -133,18 +107,12 @@ export class GeneratorVocabulary {
     const base = this.holdOffset + positionIndex * HOLD_ROLES.length;
     return HOLD_ROLES.map((_, index) => base + index);
   }
-
-  get styleArtifact(): StyleArtifact {
-    return this.style;
-  }
 }
 
 export interface PrefixRequest {
   layout: string;
   angle: number;
   grade: string;
-  /** One entry per style feature, in `FEATURE_NAMES` order; `null` leaves it unspecified. */
-  style?: (number | null)[];
   unconditional?: boolean;
 }
 
@@ -155,16 +123,11 @@ export function encodePrefix(
   if (request.unconditional) {
     return [vocabulary.bos, ...Array(vocabulary.prefixLength).fill(vocabulary.uncond)];
   }
-  const buckets = request.style ?? FEATURE_NAMES.map(() => null);
-  if (buckets.length !== FEATURE_NAMES.length) {
-    throw new Error(`Expected ${FEATURE_NAMES.length} style buckets, got ${buckets.length}`);
-  }
   return [
     vocabulary.bos,
     vocabulary.layoutToken(request.layout),
     vocabulary.angleToken(request.angle),
     vocabulary.gradeToken(request.grade),
-    ...FEATURE_NAMES.map((name, index) => vocabulary.styleToken(name, buckets[index])),
   ];
 }
 

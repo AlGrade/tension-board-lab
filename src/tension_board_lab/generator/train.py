@@ -16,15 +16,16 @@ from torch.utils.data import DataLoader, Dataset
 
 from ..catalog import DEFAULT_CATALOG_PATH, HoldCatalog
 from ..data import configuration_signature, sample_weight, split_examples
-from ..schema import RouteExample, load_jsonl
-from ..style import FEATURE_NAMES
+from ..schema import HoldNode, RouteExample, load_jsonl
 from .model import BoulderGenerator, GeneratorConfig, sequence_loss
+from .physical import physical_tables
 from .tokenizer import (
     MAX_SEQUENCE_LENGTH,
     PAD,
     PREFIX_LENGTH,
     UNCOND,
     GeneratorVocabulary,
+    canonical_holds,
     encode,
 )
 
@@ -35,6 +36,73 @@ class EncodedProblem:
 
     tokens: tuple[int, ...]
     weight: float
+    layout: int
+
+
+def mirrored(example: RouteExample) -> RouteExample:
+    """Reflect a problem left to right.
+
+    Only valid on the mirror layout, which is exactly symmetric: all 498 positions have a
+    partner carrying the same hold type. Matches the reflection ``configuration_signature``
+    already applies, so a reflected copy keeps its original's signature and cannot cross a
+    split boundary.
+    """
+
+    return RouteExample(
+        climb_id=f"{example.climb_id}:mirrored",
+        angle=example.angle,
+        source_layout=example.source_layout,
+        grade=example.grade,
+        grade_value=example.grade_value,
+        ascents=example.ascents,
+        holds=tuple(
+            HoldNode(
+                role=hold.role,
+                x=round(1.0 - hold.x, 6),
+                y=hold.y,
+                hold_type=hold.hold_type,
+                orientation_degrees=(-hold.orientation_degrees) % 360.0,
+            )
+            for hold in example.holds
+        ),
+    )
+
+
+def augment(
+    examples: Sequence[RouteExample],
+    catalog: HoldCatalog,
+    excluded: Sequence[RouteExample],
+) -> list[RouteExample]:
+    """Add the mirror image of every mirror-layout problem; 65% more training data.
+
+    A reflected copy does not always keep its original's signature. ``encode`` re-reads hold
+    type and orientation from the catalog, and 17 of the 498 mirror positions are
+    orientation-asymmetric, so 29.7% of copies canonicalize to a different configuration than
+    the problem they came from. That breaks the assumption that a copy inherits its original's
+    split, so every copy is checked against the held-out signatures directly. On current data
+    nothing is dropped, but the guard is what makes the invariant true rather than lucky.
+    """
+
+    holdout = {configuration_signature(example) for example in excluded}
+    grown = list(examples)
+    for example in examples:
+        if example.source_layout != "mirror":
+            continue
+        copy = mirrored(example)
+        if not all(catalog.contains("mirror", hold.x, hold.y) for hold in copy.holds):
+            continue
+        # Compare what training actually sees, after the catalog overrides type and orientation.
+        canonical = RouteExample(
+            climb_id=copy.climb_id,
+            angle=copy.angle,
+            source_layout=copy.source_layout,
+            grade=copy.grade,
+            holds=canonical_holds(copy, catalog),
+        )
+        if configuration_signature(canonical) in holdout:
+            continue
+        grown.append(copy)
+    return grown
 
 
 class SequenceDataset(Dataset[EncodedProblem]):
@@ -54,39 +122,30 @@ def encode_dataset(
     catalog: HoldCatalog,
 ) -> list[EncodedProblem]:
     return [
-        EncodedProblem(tokens=encode(example, vocabulary, catalog), weight=sample_weight(example))
+        EncodedProblem(
+            tokens=encode(example, vocabulary, catalog),
+            weight=sample_weight(example),
+            layout=vocabulary.layouts.index(example.source_layout),
+        )
         for example in examples
     ]
 
 
-def randomize_prefix(
-    tokens: list[int],
-    vocabulary: GeneratorVocabulary,
-    *,
-    guidance_dropout: float,
-    style_dropout: float,
-) -> None:
-    """Blank conditioning in place, for classifier-free guidance and partial style requests.
+def randomize_prefix(tokens: list[int], *, guidance_dropout: float) -> None:
+    """Blank the conditioning in place, for classifier-free guidance.
 
-    Whole-prefix dropout gives sampling a guidance scale to trade grade fidelity against
-    variety. Per-feature dropout is separate: a preset pins only two or three of the seven
-    style features, so the model has to cope with the rest being unspecified.
+    Dropping the whole prefix some of the time is what gives sampling a guidance scale to
+    trade grade fidelity against variety.
     """
 
     if random.random() < guidance_dropout:
         tokens[1 : 1 + PREFIX_LENGTH] = [UNCOND] * PREFIX_LENGTH
-        return
-    for offset, feature in enumerate(FEATURE_NAMES):
-        if random.random() < style_dropout:
-            tokens[4 + offset] = vocabulary.style_token(feature, None)
 
 
 def collate_sequences(
     batch: Sequence[EncodedProblem],
-    vocabulary: GeneratorVocabulary,
     *,
     guidance_dropout: float = 0.0,
-    style_dropout: float = 0.0,
 ) -> dict[str, Tensor]:
     """Pad to the longest sequence and build shifted next-token targets.
 
@@ -98,20 +157,20 @@ def collate_sequences(
     inputs = torch.full((len(batch), width - 1), PAD, dtype=torch.long)
     targets = torch.full((len(batch), width - 1), PAD, dtype=torch.long)
     weights = torch.ones(len(batch), dtype=torch.float32)
+    layouts = torch.zeros(len(batch), dtype=torch.long)
 
     for row, problem in enumerate(batch):
         tokens = list(problem.tokens)
-        randomize_prefix(
-            tokens, vocabulary, guidance_dropout=guidance_dropout, style_dropout=style_dropout
-        )
+        randomize_prefix(tokens, guidance_dropout=guidance_dropout)
         length = len(tokens) - 1
         inputs[row, :length] = torch.tensor(tokens[:-1], dtype=torch.long)
         shifted = torch.tensor(tokens[1:], dtype=torch.long)
         shifted[:PREFIX_LENGTH] = PAD
         targets[row, :length] = shifted
         weights[row] = problem.weight
+        layouts[row] = problem.layout
 
-    return {"inputs": inputs, "targets": targets, "weights": weights}
+    return {"inputs": inputs, "targets": targets, "weights": weights, "layouts": layouts}
 
 
 def select_generator_examples(
@@ -160,7 +219,7 @@ def train_epoch(
     for raw_batch in loader:
         batch = move_batch(raw_batch, device)
         optimizer.zero_grad(set_to_none=True)
-        logits = model(batch["inputs"])
+        logits = model(batch["inputs"], batch["layouts"])
         loss = sequence_loss(logits, batch["targets"], batch["weights"], PAD)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -186,7 +245,7 @@ def evaluate(
     problems = 0
     for raw_batch in loader:
         batch = move_batch(raw_batch, device)
-        logits = model(batch["inputs"])
+        logits = model(batch["inputs"], batch["layouts"])
         targets = batch["targets"]
         losses = torch.nn.functional.cross_entropy(
             logits.reshape(-1, logits.shape[-1]),
@@ -229,7 +288,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--layers", type=int, default=6)
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--guidance-dropout", type=float, default=0.1)
-    parser.add_argument("--style-dropout", type=float, default=0.25)
     parser.add_argument("--max-batches", type=int, default=0, help="Debug: cap batches per epoch")
     return parser.parse_args()
 
@@ -250,6 +308,12 @@ def main() -> None:
     if not pool:
         raise ValueError("No leakage-free generator examples remain")
     train_examples, validation_examples, test_examples = split_examples(pool)
+    # Augment only the training split; a reflected copy would otherwise inflate the holdouts.
+    augmented = augment(
+        train_examples,
+        catalog,
+        critic_validation + critic_test + validation_examples + test_examples,
+    )
     print(
         json.dumps(
             {
@@ -260,6 +324,7 @@ def main() -> None:
                     {configuration_signature(e) for e in critic_validation + critic_test}
                 ),
                 "train": len(train_examples),
+                "train_after_mirror_augmentation": len(augmented),
                 "validation": len(validation_examples),
                 "test": len(test_examples),
             }
@@ -268,14 +333,11 @@ def main() -> None:
     )
 
     collate = lambda batch: collate_sequences(
-        batch,
-        vocabulary,
-        guidance_dropout=args.guidance_dropout,
-        style_dropout=args.style_dropout,
+        batch, guidance_dropout=args.guidance_dropout
     )
-    evaluation_collate = lambda batch: collate_sequences(batch, vocabulary)
+    evaluation_collate = collate_sequences  # no dropout when measuring
     train_loader = DataLoader(
-        SequenceDataset(encode_dataset(train_examples, vocabulary, catalog)),
+        SequenceDataset(encode_dataset(augmented, vocabulary, catalog)),
         batch_size=args.batch_size,
         shuffle=True,
         collate_fn=collate,
@@ -292,16 +354,23 @@ def main() -> None:
         collate_fn=evaluation_collate,
     )
 
+    type_ids, orientations, hold_types = physical_tables(vocabulary, catalog)
     config = GeneratorConfig(
         vocabulary_size=vocabulary.size,
         max_sequence_length=MAX_SEQUENCE_LENGTH,
+        num_hold_types=len(hold_types),
+        num_layouts=len(vocabulary.layouts),
         width=args.width,
         heads=args.heads,
         layers=args.layers,
         dropout=args.dropout,
     )
     device = select_device(args.device)
-    model = BoulderGenerator(config).to(device)
+    model = BoulderGenerator(
+        config,
+        hold_type_ids=torch.tensor(type_ids, dtype=torch.long),
+        hold_orientations=torch.tensor(orientations, dtype=torch.float32),
+    ).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
     )
@@ -353,7 +422,7 @@ def main() -> None:
             "model_state": best_state,
             "model_config": config.as_dict(),
             "vocabulary": vocabulary.as_dict(),
-            "style_features": list(FEATURE_NAMES),
+            "hold_type_to_index": hold_types,
             "test_metrics": test_metrics,
             "selected_epoch": best_epoch,
             "stopped_epoch": stopped_epoch,
@@ -364,7 +433,7 @@ def main() -> None:
                 "angles": [35, 40, 45, 50, 55],
                 "grade_scale": "V",
                 "training_pipeline": "next-token prediction with classifier-free guidance",
-                "conditioning": ["layout", "angle", "grade", *FEATURE_NAMES],
+                "conditioning": ["layout", "angle", "grade"],
                 "held_out": "the grade critic's validation and test configurations",
             },
             "training_args": vars(args)
@@ -377,6 +446,7 @@ def main() -> None:
             "data": {
                 "pool": len(pool),
                 "train": len(train_examples),
+                "train_after_mirror_augmentation": len(augmented),
                 "validation": len(validation_examples),
                 "test": len(test_examples),
             },

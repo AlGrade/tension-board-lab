@@ -125,21 +125,26 @@ def export_generator(checkpoint: Path, destination: Path) -> dict[str, object]:
     model.eval()
 
     tokens = torch.randint(0, vocabulary.size, (2, 12), dtype=torch.long)
+    layouts = torch.zeros(2, dtype=torch.long)
     destination.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(
         model,
-        (tokens,),
+        (tokens, layouts),
         str(destination),
-        input_names=["tokens"],
+        input_names=["tokens", "layouts"],
         output_names=["logits"],
-        dynamic_axes={"tokens": {0: "batch", 1: "length"}, "logits": {0: "batch", 1: "length"}},
+        dynamic_axes={
+            "tokens": {0: "batch", 1: "length"},
+            "layouts": {0: "batch"},
+            "logits": {0: "batch", 1: "length"},
+        },
         opset_version=OPSET,
         dynamo=False,
     )
     return {
         "model": "generator",
         "path": str(destination),
-        "inputs": ["tokens"],
+        "inputs": ["tokens", "layouts"],
         "vocabulary_size": vocabulary.size,
         "max_sequence_length": config.max_sequence_length,
     }

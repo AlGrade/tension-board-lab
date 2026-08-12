@@ -12,12 +12,10 @@ from tension_board_lab.export.artifacts import (
     generator_artifact,
     parity_fixtures,
     select_fixture_examples,
-    style_artifact,
 )
 from tension_board_lab.generator.tokenizer import GeneratorVocabulary
 from tension_board_lab.grade.model import ModelConfig, TensionGradeTransformer
 from tension_board_lab.schema import RouteExample
-from tension_board_lab.style import BUCKET_EDGES, FEATURE_NAMES, PRESETS
 
 CATALOG = HoldCatalog.load()
 CRITIC_CHECKPOINT = Path("checkpoints/grade/tb2_12x12.pt")
@@ -54,27 +52,6 @@ def test_board_artifact_carries_auroras_role_colors() -> None:
         "finish": "FF0000",
         "foot": "FF00FF",
     }
-
-
-def test_style_artifact_mirrors_the_python_definitions() -> None:
-    style = style_artifact()
-    assert style["feature_names"] == list(FEATURE_NAMES)
-    for feature in FEATURE_NAMES:
-        assert style["bucket_edges"][feature] == list(BUCKET_EDGES[feature])
-    assert sorted(style["presets"]) == sorted(PRESETS)
-    for name, preset in PRESETS.items():
-        exported = style["presets"][name]
-        assert exported["conditioning_buckets"] == list(preset.conditioning_buckets())
-        assert sorted(exported["bounds"]) == sorted(preset.bounds)
-
-
-def test_style_artifact_is_json_round_trippable() -> None:
-    """`None` bounds must survive; JSON turns them into null, not into a missing key."""
-
-    restored = json.loads(json.dumps(style_artifact()))
-    for name, preset in PRESETS.items():
-        for feature, (low, high) in preset.bounds.items():
-            assert restored["presets"][name]["bounds"][feature] == [low, high]
 
 
 @needs_critic

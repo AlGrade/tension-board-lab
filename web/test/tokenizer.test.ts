@@ -10,13 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { BoulderConstraints } from "../src/generate/constraints";
 import { GeneratorVocabulary, encodePrefix, positionKey } from "../src/model/tokenizer";
-import { FEATURE_NAMES } from "../src/style";
-import type {
-  BoardArtifact,
-  GeneratorArtifact,
-  HoldRole,
-  StyleArtifact,
-} from "../src/types";
+import type { BoardArtifact, GeneratorArtifact, HoldRole } from "../src/types";
 
 const DATA = new URL("../public/data/", import.meta.url);
 
@@ -35,29 +29,21 @@ interface GeneratorFixtures {
     };
     tokens: number[];
     unconditional: number[];
-    style_unspecified: number[];
   }[];
-  prefixes: {
-    layout: string;
-    angle: number;
-    grade: string;
-    preset: string | null;
-    tokens: number[];
-  }[];
+  prefixes: { layout: string; angle: number; grade: string; tokens: number[] }[];
   mask_states: { name: string; chosen: number[]; allowed: number[] }[];
 }
 
 const board = readJson<BoardArtifact>("board.json");
-const style = readJson<StyleArtifact>("style.json");
 const artifact = readJson<GeneratorArtifact>("generator.json");
 const fixtures = readJson<GeneratorFixtures>("generator_fixtures.json");
-const vocabulary = new GeneratorVocabulary(artifact, style);
+const vocabulary = new GeneratorVocabulary(artifact);
 
 describe("generator vocabulary", () => {
   it("agrees with Python on size and offsets", () => {
-    expect(vocabulary.size).toBe(2223);
+    expect(vocabulary.size).toBe(2182);
     expect(vocabulary.positions.length).toBe(537);
-    expect(vocabulary.prefixLength).toBe(3 + FEATURE_NAMES.length);
+    expect(vocabulary.prefixLength).toBe(3);
     expect({
       pad: vocabulary.pad,
       bos: vocabulary.bos,
@@ -84,16 +70,12 @@ describe("generator vocabulary", () => {
 
 describe("prefix encoding", () => {
   fixtures.prefixes.forEach((fixture, index) => {
-    const label = `${fixture.layout} ${fixture.angle}° ${fixture.grade} ${fixture.preset ?? "no style"}`;
+    const label = `${fixture.layout} ${fixture.angle}° ${fixture.grade}`;
     it(`matches Python for prefix ${index} (${label})`, () => {
-      const preset = fixture.preset
-        ? style.presets[fixture.preset].conditioning_buckets
-        : undefined;
       const tokens = encodePrefix(vocabulary, {
         layout: fixture.layout,
         angle: fixture.angle,
         grade: fixture.grade,
-        style: preset,
       });
       expect(tokens).toEqual(fixture.tokens);
     });
@@ -140,15 +122,6 @@ describe("token sequences", () => {
       );
     });
 
-    it(`matches Python's all-unspecified style prefix for sequence ${index}`, () => {
-      expect(fixture.style_unspecified.slice(0, 1 + vocabulary.prefixLength)).toEqual(
-        encodePrefix(vocabulary, {
-          layout: fixture.problem.source_layout,
-          angle: fixture.problem.angle,
-          grade: fixture.problem.grade,
-        }),
-      );
-    });
   });
 
   it("keeps every sequence inside the model's length limit", () => {

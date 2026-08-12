@@ -1,8 +1,8 @@
 /**
- * Ask for a grade, an angle, and a style; get a problem you can then edit.
+ * Ask for a grade and an angle; get a problem you can then edit.
  *
  * Whatever is on the board is graded, whether the generator put it there or you did. The
- * generator loads on first use rather than at startup; it is a separate 3.7 MB.
+ * generator loads on first use rather than at startup; it is a separate 3.8 MB.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,7 +18,6 @@ import {
   type Hold,
   type HoldRole,
   type Placement,
-  type StyleArtifact,
 } from "./types";
 
 const ANGLES = [35, 40, 45, 50, 55];
@@ -44,14 +43,12 @@ async function fetchJson<T>(path: string): Promise<T> {
 export default function App() {
   const [board, setBoard] = useState<BoardArtifact>();
   const [calibration, setCalibration] = useState<CalibrationMap>();
-  const [style, setStyle] = useState<StyleArtifact>();
   const [critic, setCritic] = useState<Critic>();
   const [error, setError] = useState<string>();
 
   const [layout, setLayout] = useState("mirror");
   const [angle, setAngle] = useState(40);
   const [targetGrade, setTargetGrade] = useState("V5");
-  const [preset, setPreset] = useState("");
 
   const [holds, setHolds] = useState<Hold[]>([]);
   const [prediction, setPrediction] = useState<Prediction>();
@@ -64,14 +61,12 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [boardData, styleData, criticData, calibrationData] = await Promise.all([
+        const [boardData, criticData, calibrationData] = await Promise.all([
           fetchJson<BoardArtifact>("/data/board.json"),
-          fetchJson<StyleArtifact>("/data/style.json"),
           fetchJson<CriticArtifact>("/data/critic.json"),
           fetchJson<CalibrationMap>("/board/calibration.json"),
         ]);
         setBoard(boardData);
-        setStyle(styleData);
         setCalibration(calibrationData);
         setCritic(await Critic.load("/models/grade.int8.onnx", criticData));
       } catch (cause) {
@@ -119,7 +114,10 @@ export default function App() {
       .then(([result]) => {
         if (!cancelled) setPrediction(result);
       })
-      .catch((cause: unknown) => setError(String(cause)))
+      .catch(() => {
+        // A failed score leaves the last grade standing rather than discarding the problem.
+        if (!cancelled) setPrediction(undefined);
+      })
       .finally(() => {
         if (!cancelled) setScoring(false);
       });
@@ -129,8 +127,9 @@ export default function App() {
   }, [critic, holds, angle, layout]);
 
   const generate = useCallback(async () => {
-    if (!critic || !board || !style) return;
+    if (!critic || !board) return;
     setGenerating(true);
+    setError(undefined);
     setStatus("Sampling");
     try {
       if (!generator.current) {
@@ -140,7 +139,6 @@ export default function App() {
           "/models/generator.int8.onnx",
           artifact,
           board,
-          style,
         );
       }
       setStatus("Sampling");
@@ -148,7 +146,6 @@ export default function App() {
         layout,
         angle,
         grade: targetGrade,
-        preset: preset || undefined,
         count: CANDIDATES,
       });
       setStatus("Ranking");
@@ -156,9 +153,8 @@ export default function App() {
       // Twelve are sampled and ranked; the best one goes on the board.
       const ranked = rankCandidates(sampled, scored, {
         targetIndex: critic.gradeIndex(targetGrade),
-        preset: preset || undefined,
-        style,
       });
+      // The layout select is disabled while generating, so `layout` cannot have moved on.
       setHolds(ranked[0].problem.holds);
       setStatus(undefined);
     } catch (cause) {
@@ -166,7 +162,7 @@ export default function App() {
     } finally {
       setGenerating(false);
     }
-  }, [critic, board, style, layout, angle, targetGrade, preset]);
+  }, [critic, board, layout, angle, targetGrade]);
 
   if (error) {
     return (
@@ -185,7 +181,7 @@ export default function App() {
     );
   }
 
-  if (!board || !style || !calibration) {
+  if (!board || !calibration) {
     return (
       <main className="app">
         <div className="masthead">
@@ -288,7 +284,11 @@ export default function App() {
             <div className="fields">
               <label className="field">
                 <span>Layout</span>
-                <select value={layout} onChange={(event) => setLayout(event.target.value)}>
+                <select
+                  value={layout}
+                  onChange={(event) => setLayout(event.target.value)}
+                  disabled={generating}
+                >
                   {Object.keys(board.layouts).map((name) => (
                     <option key={name} value={name}>
                       {name}
@@ -301,6 +301,7 @@ export default function App() {
                 <select
                   value={angle}
                   onChange={(event) => setAngle(Number(event.target.value))}
+                  disabled={generating}
                 >
                   {ANGLES.map((value) => (
                     <option key={value} value={value}>
@@ -320,22 +321,11 @@ export default function App() {
                 <select
                   value={targetGrade}
                   onChange={(event) => setTargetGrade(event.target.value)}
-                  disabled={grades.length === 0}
+                  disabled={grades.length === 0 || generating}
                 >
                   {grades.map((label) => (
                     <option key={label} value={label}>
                       {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Style</span>
-                <select value={preset} onChange={(event) => setPreset(event.target.value)}>
-                  <option value="">any</option>
-                  {Object.keys(style.presets).map((name) => (
-                    <option key={name} value={name}>
-                      {name}
                     </option>
                   ))}
                 </select>

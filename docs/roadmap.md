@@ -1,8 +1,8 @@
 # Roadmap: the boulder problem generator
 
-The goal is a React application without a backend. You enter a grade, a wall angle, and a
-style, and you see a **newly generated** problem on a rendered Tension Board 2 12x12.
-Transferring the problem to the wall over Web Bluetooth is an optional last step.
+The goal is a React application without a backend. You enter a grade and a wall angle, and you
+see a **newly generated** problem on a rendered Tension Board 2 12x12. Transferring the problem
+to the wall over Web Bluetooth is an optional last step.
 
 What already exists: the grade predictor (2.85 million parameters, graph transformer, mean
 absolute error of 0.935 V grades) and the full data pipeline over the Aurora database—21,809
@@ -12,7 +12,7 @@ consensus problems and 49,512 problems with at least one ascent. See
 ## The chosen approach
 
 A **conditional autoregressive generator**. A new, small model learns from real problems what
-a problem looks like, conditioned on angle, target grade, and style features. The existing
+a problem looks like, conditioned on angle and target grade. The existing
 grade predictor stays unchanged and acts as an independent critic during sampling.
 
 Rejected: generating at random and filtering with the grade model. With 498 hold positions per
@@ -47,12 +47,13 @@ Shared code sits at the top level of the package, and each model gets a subpacka
 src/tension_board_lab/
   schema.py grades.py aurora.py data.py     unchanged, shared by both models
   catalog.py                                done  board placements, position -> hold lookup
-  style.py                                  done  rule-based style features (shared)
   grade/
     model.py train.py predict.py            unchanged (grade critic)
   generator/
     tokenizer.py                            done  problem <-> token sequence
+    physical.py                             done  hold type and orientation per token
     constraints.py                          done  legal-token masks for sampling
+    evaluate.py                             done  tension-eval-generator
     model.py                                done  decoder-only transformer
     train.py                                done  tension-train-generator
     sample.py                               done  tension-sample (offline evaluation)
@@ -61,11 +62,10 @@ src/tension_board_lab/
     artifacts.py                            new  tension-export-web (catalog, vocabulary, ids)
 web/                                        new  Vite + React + TypeScript
   public/models/*.onnx                      git-ignored, produced by the export
-  public/data/*.json                        hold catalog, vocabulary, style presets
+  public/data/*.json                        hold catalog, vocabulary, constraints
   src/board/                                SVG renderer
   src/model/                                featurization + onnxruntime-web sessions
-  src/generate/                             sampling loop, logit masking, style filter
-  src/style.ts                              mirror of style.py, tested for parity
+  src/generate/                             sampling loop, logit masking
 ```
 
 `tests/` mirrors the package, so generator and export tests land in `tests/generator/` and
@@ -83,21 +83,22 @@ exists per position, and wood and plastic never collide—498 positions per layo
 coordinates across both. Hold type and orientation therefore follow deterministically from the
 position via a catalog lookup. The generator only picks `(position, role)`.
 
-- **Vocabulary:** 537 coordinates x 4 roles = 2,148 hold tokens, plus 4 special tokens and 71
-  conditioning tokens—**2,223** in total. Implemented in
+- **Vocabulary:** 537 coordinates x 4 roles = 2,148 hold tokens, plus 4 special tokens and 30
+  conditioning tokens—**2,182** in total. Implemented in
   [generator/tokenizer.py](../src/tension_board_lab/generator/tokenizer.py).
 - **Order:** problems are sets, not sequences. Sort deterministically by ascending `(y, x)`.
   That is physically sensible—bottom to top—and makes starts early tokens and finishes late
   ones.
-- **Conditioning prefix:** `[layout][angle][grade][style x7]`, a fixed 10 tokens before the
-  first hold. Angle and grade get one token per value rather than a bucket range, so both
-  survive a round trip exactly.
-- **Unspecified style:** each style feature has one slot past its buckets meaning *any*. A
-  preset pins only two or three of the seven features, and inventing values for the rest would
-  over-constrain sampling. Training drops individual buckets at random so the model sees
-  partial style requests.
-- **Sequence length:** 35 holds at most in the dataset, plus the 10-token prefix and BOS/EOS,
-  so 47.
+- **Conditioning prefix:** `[layout][angle][grade]`, a fixed 3 tokens before the first hold.
+  Angle and grade get one token per value rather than a bucket range, so both survive a round
+  trip exactly.
+- **Physical context:** the hold type and orientation behind each token are added as an
+  embedding. A token names only a position, so without this the model can learn what a position
+  affords only by memorizing all 537 separately, while hold type generalizes across them. The
+  layout is a second model input, because the same position carries a different hold on each
+  layout and guidance blanks the request rather than the wall.
+- **Sequence length:** 35 holds at most in the dataset, plus the 3-token prefix and BOS/EOS,
+  so 40.
 
 ### Architecture
 
@@ -124,7 +125,7 @@ around 6 MB.
 
 ### Sampling in the browser
 
-1. The user picks grade, angle, style, and layout.
+1. The user picks grade, angle, and layout.
 2. Sample about 24 candidates in parallel (nucleus sampling plus a CFG scale).
 3. **Apply hard rules as logit masking during sampling**, not as a post-filter—far more
    efficient than discarding:
@@ -132,89 +133,81 @@ around 6 MB.
    - mask positions already used (one role per position);
    - mask `EOS` while there are fewer than 2 holds, or no start, or no finish;
    - allow finish tokens only above a minimum height and start tokens only below one;
-   - cap the hold count by style.
 4. Run all candidates through the grade critic in a **single** batch and take the
    **expectation** `sum p_i * i`—not `argmax`, which is too noisy at around 38% confidence.
-5. Rank by `w1 * |E[grade] - target| + w2 * style_distance - w3 * log p(problem)`. Show the
-   best candidate; the rest fill a *next suggestion* button.
+5. Rank by `w1 * |E[grade] - target| - w2 * log p(problem)`. Show the best candidate.
 
 Runtime: roughly 15 generator forward steps through a 3M model, and one batched critic call
 over at most 35 nodes. Both are well under a second with `onnxruntime-web`.
 
-## Style: rule-based, one source of truth
+## Style: tried and dropped
 
-Style is defined in code in `src/tension_board_lab/style.py` and mirrored in `web/src/style.ts`,
-with a parity test. No labels, no hand annotation of hold types.
+Style was defined in code as seven geometric features over `(x, y, role)` — hand and foot
+counts, move lengths, height span, foot-to-hand ratio — bucketed into the conditioning prefix
+and mirrored in TypeScript with a parity test. Mechanically it worked. It failed on its own
+terms: the four presets matched 12.1% (power), 7.2% (dyno), 1.3% (endurance) and 3.1%
+(technical) of samples, which is not a useful control, and the feature was not wanted in the
+product. Removed entirely — from the tokenizer, the training, the export, the app and the
+tests.
 
-Reference values from the corpus of 21,809 problems: on average 1.54 start, 4.51 hand, 3.35
-foot, and 1.06 finish holds; median 10 holds in total, p95 16, maximum 35.
-
-The per-problem feature vector is purely geometric, computable from `(x, y, role)`:
-`hand_count`, `foot_count`, `mean_move_length`, `max_move_length`, `height_span`,
-`foot_to_hand_ratio`, `move_length_variance`.
-
-Presets are ranges over those features:
-
-Thresholds are training-split percentiles: *high* is p70 or above, *short* is p30 or below, and
-dyno's cutoff is p90. The last column is the share of the 17,477 training problems that match.
-
-| Style | Definition | Corpus |
-| --- | --- | --- |
-| power | at most 4 hand holds, high mean and maximum move length | 12.1% |
-| endurance | at least 8 hand holds, short moves, high y coverage | 1.3% |
-| dyno | high maximum single move length, otherwise normal hold count | 7.2% |
-| technical | high foot density relative to hand holds, short moves | 12.1% |
-
-Endurance is rare because hand counts above 6 are rare on this board—p90 is 6 hand holds. The
-UI should treat an endurance request the same way it treats V13: honestly.
-
-The same code serves both uses: at training time the features are part of the conditioning
-prefix (discretized into buckets), computable for every training example and therefore free of
-labeling cost; at sampling time they provide `style_distance` for ranking and the hold-count
-bound for logit masking.
-
-Crimpy, slopey, and pinchy stay inexpressible—those would need a hand-annotated taxonomy of the
-106 hold types. Deliberately out of scope, and retrofittable without changing anything else.
+Two things it left behind. The prefix is fixed-width so guidance can blank it without shifting
+the holds, which is still how classifier-free guidance works here. And the corpus reference
+values it was built on — 1.54 start, 4.52 hand, 3.35 foot, 1.06 finish holds per problem,
+median 10 holds — are now the distribution-fidelity target in `tension-eval-generator`.
 
 ## Steps
 
-### Step 1: style features and tokenizer — done
+### Step 1: tokenizer — done
 
-[style.py](../src/tension_board_lab/style.py) with the feature computation, bucket edges, and
-the presets; [catalog.py](../src/tension_board_lab/catalog.py) for the position-to-hold lookup
-both the tokenizer and the export need; and
+[catalog.py](../src/tension_board_lab/catalog.py) for the position-to-hold lookup both the
+tokenizer and the export need, and
 [generator/tokenizer.py](../src/tension_board_lab/generator/tokenizer.py) with the
 problem-to-token-sequence mapping, layout handling, and `(y, x)` ordering. Covered by
-[tests/test_style.py](../tests/test_style.py) and
 [tests/generator/test_tokenizer.py](../tests/generator/test_tokenizer.py).
 
 ### Step 2: train the generator — done
 
-[generator/model.py](../src/tension_board_lab/generator/model.py) (3,104,175 parameters),
+[generator/model.py](../src/tension_board_lab/generator/model.py) (3,116,038 parameters),
 [generator/train.py](../src/tension_board_lab/generator/train.py) with `tension-train-generator`,
-[generator/constraints.py](../src/tension_board_lab/generator/constraints.py) for the masking
-rules, and [generator/sample.py](../src/tension_board_lab/generator/sample.py) with
-`tension-sample`. Full results in
-[reports/generator/tb2_12x12.metrics.json](../reports/generator/tb2_12x12.metrics.json).
+[generator/physical.py](../src/tension_board_lab/generator/physical.py) for the hold type behind
+each token, [generator/constraints.py](../src/tension_board_lab/generator/constraints.py) for
+the masking rules, [generator/sample.py](../src/tension_board_lab/generator/sample.py) with
+`tension-sample`, and [generator/evaluate.py](../src/tension_board_lab/generator/evaluate.py)
+with `tension-eval-generator`. Reports in [reports/generator/](../reports/generator/).
 
-Trained on the 36,169-problem training split of the leakage-free pool, early-stopped at epoch
-27 with epoch 19 selected. Test negative log-likelihood is 3.481 per token against a uniform
-baseline of 7.707.
+Trained on the mirror-augmented training split (36,169 problems, 59,435 after reflection),
+early-stopped at epoch 24 with epoch 12 selected.
 
-| Measure | Result |
-| --- | --- |
-| Grade fidelity (MAE vs. the critic) | 1.027 at guidance 1.0, 0.829 at 1.5, **0.752 at 2.5** |
-| Novelty | **100%** of 480 samples absent from all 35,524 corpus signatures |
-| Validity | **100%**—masking makes a violation unreachable, not merely unlikely |
-| Style steering (dyno) | 6.2% unconditioned to **78.1%** conditioned |
+Measured over 240 samples per guidance scale, before and after removing styles, adding the
+physical inputs, and augmenting:
 
-Guidance behaves as intended: raising it trades variety for grade fidelity, monotonically.
+| Guidance | Grade MAE | Feet per problem | Holds |
+| --- | --- | --- | --- |
+| 1.0 | 1.114 -> 1.067 | 2.89 -> **3.15** | 9.7 -> **10.0** |
+| 1.5 | 0.892 -> 0.905 | 2.78 -> **3.10** | 9.5 -> **9.9** |
+| 2.5 | 0.721 -> 0.791 | 2.60 -> **2.87** | 9.2 -> **9.6** |
+| 3.5 | 0.780 -> 0.801 | 2.46 -> **2.81** | 9.1 -> **9.8** |
 
-**Known limitations, all measured:** feet are under-generated (2.7 per problem against the
-corpus 3.35) and problems run short (max 21 holds against 35). Technical steering is weak at
-3.1% as a direct consequence—that preset needs a high foot-to-hand ratio. Grades regress toward
-the middle at the extremes: V2 requests average V2.38 and V10 requests average V9.82. The foot
-shortfall is the one worth attacking first.
+Corpus reference: 3.35 feet, 10.6 holds. Validity and novelty stayed at 100%, diversity at
+about 0.96 - candidates are almost entirely distinct.
+
+**How strong is this?** The 95% intervals overlap at every individual guidance level, so no
+single comparison is decisive on its own. What carries it is that all four levels move the same
+way by a similar amount, hold count moves with it, and the mechanism was verified
+independently: 432 of 459 shared positions carry a different hold type on each layout, and 56
+of 106 types are used for one role more than 70% of the time. A caveat on process: the old
+checkpoint was overwritten by the retrain, so the baseline can no longer be re-measured at a
+larger sample size.
+
+**Guidance stays at 1.5.** It is where the realism gain is largest, and grade fidelity there is
+unchanged from the baseline (0.892 -> 0.905, intervals overlapping). Raising it to 2.5 buys
+about 0.11 V grades of fidelity and gives back roughly a quarter of a foot hold - the wrong
+trade when the goal is problems that look set by a person.
+
+**What is left.** Feet are still short of 3.35, and mirror augmentation did not remove the
+overfitting: validation likelihood still turns upward around epoch 12, because a reflected copy
+is highly correlated with its original and carries less than fresh data would. Grades still
+regress toward the middle at the extremes.
 
 One caveat on grade fidelity: the critic is the judge, so it measures agreement with the
 critic, not ground truth. It is still meaningful, because the generator never saw the critic's
@@ -225,10 +218,10 @@ holdout configurations.
 [export/onnx.py](../src/tension_board_lab/export/onnx.py) (`tension-export-onnx`) for both
 models, and [export/artifacts.py](../src/tension_board_lab/export/artifacts.py)
 (`tension-export-web`) for the board catalog, both vocabularies, `grade_labels`, the
-calibration temperature of 1.67 (confirmed), the style constants, the JS/Python parity
-fixtures, and the `placement_id` table.
+calibration temperature of 1.67 (confirmed), the JS/Python parity fixtures, and the
+`placement_id` table.
 
-The int8 download is **3.10 MB for the critic and 3.69 MB for the generator, 6.79 MB
+The int8 download is **3.10 MB for the critic and 3.77 MB for the generator, 6.87 MB
 together**—a little above the 6 MB estimated here. Quantization costs little: over 200 real
 problems the int8 critic agrees with fp32 on 98.0% of predicted grades, and
 `examples/route.json` still reads V9.
@@ -258,8 +251,8 @@ recomputes it.
 ### Step 4: React app — done
 
 Vite, React, and TypeScript under [web/](../web/README.md). An SVG board renderer driven by
-`board.json` with Aurora's role colors, `style.ts` as a mirror of `style.py`, and the
-featurization in `web/src/model/` as an exact mirror of `collate_routes`.
+`board.json` with Aurora's role colors, and the featurization in `web/src/model/` as an exact
+mirror of `collate_routes`.
 
 Driven in a real browser: 498 holds render, selecting a start, two hands, a foot, and a finish
 scores V12 at 51.1% confidence, editing the problem re-scores it, and switching 40° to 55°
@@ -282,14 +275,14 @@ covered by a test against fixtures recorded from PyTorch:
 onnxruntime and checks the resulting probabilities against PyTorch's, including that
 `examples/route.json` still reads V9 at 0.3832 in JavaScript.
 
-**Download budget, corrected.** The int8 graphs total 6.79 MB, but onnxruntime-web's wasm
+**Download budget, corrected.** The int8 graphs total 6.87 MB, but onnxruntime-web's wasm
 runtime is another **6.4 MB gzipped** on top—this plan only ever counted the models. Loading
 the generator lazily, when someone first asks for a problem, keeps the initial load to the
 critic alone.
 
 ### Step 5: sampling UI — done
 
-Inputs for grade, angle, style, and layout; a generate action; the result with its grade and
+Inputs for grade, angle, and layout; a generate action; the result with its grade and
 confidence; and an editor that toggles individual holds with live re-scoring by the critic.
 
 The plan's *next suggestion* button was built and then dropped as clutter: twelve candidates
@@ -305,7 +298,7 @@ re-scored it live. No console errors.
 
 **The generator is loaded on first use, not at startup.** Nothing generator-shaped is fetched
 until the button is clicked; someone who only wants to grade a problem they built never pays
-the extra 3.7 MB.
+the extra 3.8 MB.
 
 Parity is checked piece by piece rather than end to end, because the two sides draw from
 different random number generators: `tension-export-web` records token sequences, conditioning
@@ -313,10 +306,8 @@ prefixes, and constraint masks, and `test/tokenizer.test.ts` matches all of them
 including the masks token for token. `test/sample.test.ts` then samples from the real graph and
 asserts every problem is valid.
 
-That paid for itself immediately: the mask fixtures caught an off-by-one in the "any" style
-slot. TypeScript used `len(edges)` where Python uses `bucket_count`, so every unspecified style
-feature pointed at the wrong token. Nothing would have thrown; generation would just have been
-quietly mis-conditioned.
+That paid for itself immediately: the fixtures caught an off-by-one in a conditioning slot that
+would have mis-conditioned every generation without throwing anything.
 
 One honest wrinkle in the UI: the headline grade is the critic's argmax while the ranking uses
 its expectation, so a problem ranked as V6.02 can be labelled V5 at 27% confidence. Both
@@ -345,13 +336,13 @@ precision.
 **Python tests**, following the style of [tests/test_data.py](../tests/test_data.py)—module
 helpers instead of fixtures, descriptive test names, `-> None`, absolute imports:
 
-- `test_style.py`: style features against hand-computed problems; presets separate corpus
-  examples.
 - `test_tokenizer.py`: lossless roundtrip; layout separation; deterministic ordering.
 - `test_export.py`: ONNX parity—the same `RouteExample` objects through PyTorch and
   `onnxruntime`, logits within about 1e-4, checked at 2, 10, and 35 nodes.
 
-**Generator evaluation** with `tension-sample` against the holdout:
+**Generator evaluation** with `tension-eval-generator`, which bundles all of the below into one
+command with bootstrap confidence intervals, a fixed seed, and CPU-only execution so runs are
+comparable across machines:
 
 - negative log-likelihood on the validation split;
 - **grade fidelity:** sample N problems per target grade and measure the mean absolute error
@@ -361,10 +352,12 @@ helpers instead of fixtures, descriptive test names, `-> None`, absolute imports
   corpus (should be low), plus edit distance to the nearest corpus neighbor;
 - **validity:** the fraction of samples violating hard constraints—must be 0;
 - **distribution fidelity:** hold-count and role distributions against the corpus, targeting
-  about 1.5 start, 4.5 hand, 3.4 foot, and 1.1 finish holds.
+  about 1.5 start, 4.5 hand, 3.4 foot, and 1.1 finish holds;
+- **diversity:** mean pairwise Jaccard distance within a candidate set, so twelve variations of
+  one problem cannot pass as twelve suggestions.
 
-**JS/Python parity:** test the TypeScript featurization and `style.ts` against reference
-fixtures exported from Python—problem, expected tensors, expected logits. This is the most
+**JS/Python parity:** test the TypeScript featurization against reference fixtures exported
+from Python—problem, expected tensors, expected logits. This is the most
 error-prone point in the whole undertaking.
 
 **Manual, and not optional:** look at 20 generated problems and judge for yourself whether they

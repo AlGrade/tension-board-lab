@@ -2,7 +2,7 @@
 
 A sequence is::
 
-    [BOS] layout angle grade style x7 | hold hold ... hold | [EOS]
+    [BOS] layout angle grade | hold hold ... hold | [EOS]
 
 The conditioning prefix has a fixed width, so a given piece of conditioning always sits at the
 same position. Classifier-free guidance replaces every prefix token with ``UNCOND`` rather than
@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from ..catalog import HoldCatalog, Position, position_key
 from ..grades import V_GRADES, normalize_v_grade
 from ..schema import HOLD_ROLES, SUPPORTED_ANGLES, HoldNode, RouteExample
-from ..style import FEATURE_NAMES, bucket_count, compute_style_features, style_buckets
 
 PAD, BOS, EOS, UNCOND = 0, 1, 2, 3
 SPECIAL_TOKENS: tuple[str, ...] = ("<pad>", "<bos>", "<eos>", "<uncond>")
@@ -31,8 +30,8 @@ SPECIAL_TOKENS: tuple[str, ...] = ("<pad>", "<bos>", "<eos>", "<uncond>")
 # The largest problem in the corpus uses 35 holds.
 MAX_HOLDS = 35
 
-# layout, angle, grade, and one bucket per style feature.
-PREFIX_LENGTH = 3 + len(FEATURE_NAMES)
+# layout, angle, grade.
+PREFIX_LENGTH = 3
 
 # [BOS] + prefix + holds + [EOS]
 MAX_SEQUENCE_LENGTH = PREFIX_LENGTH + MAX_HOLDS + 2
@@ -53,7 +52,6 @@ class GeneratorVocabulary:
     layout_offset: int
     angle_offset: int
     grade_offset: int
-    style_offsets: tuple[int, ...]
     hold_offset: int
 
     @classmethod
@@ -66,13 +64,7 @@ class GeneratorVocabulary:
         layout_offset = len(SPECIAL_TOKENS)
         angle_offset = layout_offset + len(catalog.layouts)
         grade_offset = angle_offset + len(ANGLES)
-
-        offset = grade_offset + len(grade_labels)
-        style_offsets: list[int] = []
-        for feature in FEATURE_NAMES:
-            style_offsets.append(offset)
-            # One slot past the buckets holds "any", used when a preset leaves a feature free.
-            offset += bucket_count(feature) + 1
+        hold_offset = grade_offset + len(grade_labels)
 
         return cls(
             positions=catalog.positions,
@@ -85,8 +77,7 @@ class GeneratorVocabulary:
             layout_offset=layout_offset,
             angle_offset=angle_offset,
             grade_offset=grade_offset,
-            style_offsets=tuple(style_offsets),
-            hold_offset=offset,
+            hold_offset=hold_offset,
         )
 
     @property
@@ -104,7 +95,6 @@ class GeneratorVocabulary:
             "layout_offset": self.layout_offset,
             "angle_offset": self.angle_offset,
             "grade_offset": self.grade_offset,
-            "style_offsets": list(self.style_offsets),
             "hold_offset": self.hold_offset,
         }
 
@@ -120,7 +110,6 @@ class GeneratorVocabulary:
             layout_offset=int(raw["layout_offset"]),
             angle_offset=int(raw["angle_offset"]),
             grade_offset=int(raw["grade_offset"]),
-            style_offsets=tuple(int(value) for value in raw["style_offsets"]),
             hold_offset=int(raw["hold_offset"]),
         )
 
@@ -144,15 +133,6 @@ class GeneratorVocabulary:
             return self.grade_offset + self.grade_labels.index(label)
         except ValueError as error:
             raise ValueError(f"Grade {label} is outside the generator vocabulary") from error
-
-    def style_token(self, feature: str, bucket: int | None) -> int:
-        index = FEATURE_NAMES.index(feature)
-        slots = bucket_count(feature)
-        # ``None`` means unspecified and maps to the slot just past the real buckets.
-        resolved = slots if bucket is None else bucket
-        if not 0 <= resolved <= slots:
-            raise ValueError(f"Bucket {bucket} is out of range for style feature {feature!r}")
-        return self.style_offsets[index] + resolved
 
     # -- holds -------------------------------------------------------------------------
 
@@ -204,25 +184,17 @@ def encode_prefix(
     layout: str,
     angle: int,
     grade: str,
-    style: tuple[int | None, ...] | None = None,
     unconditional: bool = False,
 ) -> tuple[int, ...]:
     """``[BOS]`` plus the conditioning prefix, ready to prime sampling."""
 
     if unconditional:
         return (BOS,) + (UNCOND,) * PREFIX_LENGTH
-    buckets = style if style is not None else (None,) * len(FEATURE_NAMES)
-    if len(buckets) != len(FEATURE_NAMES):
-        raise ValueError(f"Expected {len(FEATURE_NAMES)} style buckets, got {len(buckets)}")
     return (
         BOS,
         vocabulary.layout_token(layout),
         vocabulary.angle_token(angle),
         vocabulary.grade_token(grade),
-        *(
-            vocabulary.style_token(feature, bucket)
-            for feature, bucket in zip(FEATURE_NAMES, buckets)
-        ),
     )
 
 
@@ -231,14 +203,9 @@ def encode(
     vocabulary: GeneratorVocabulary,
     catalog: HoldCatalog,
     *,
-    style: tuple[int | None, ...] | None = None,
     unconditional: bool = False,
 ) -> tuple[int, ...]:
-    """Encode a problem as a full training sequence.
-
-    Style buckets are computed from the problem unless ``style`` overrides them; training
-    passes a partly-``None`` tuple to teach the model to handle partial style requests.
-    """
+    """Encode a problem as a full training sequence."""
 
     layout = _require_layout(example)
     if example.grade is None:
@@ -251,14 +218,11 @@ def encode(
     if len(set(positions)) != len(positions):
         raise ValueError("Two holds share one position; a position carries a single role")
 
-    if style is None:
-        style = style_buckets(compute_style_features(example))
     prefix = encode_prefix(
         vocabulary,
         layout=layout,
         angle=example.angle,
         grade=example.grade,
-        style=style,
         unconditional=unconditional,
     )
     body = tuple(

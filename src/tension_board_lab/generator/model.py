@@ -1,4 +1,10 @@
-"""Decoder-only transformer over boulder problem token sequences."""
+"""Decoder-only transformer over boulder problem token sequences.
+
+Besides the token itself the model is told what is physically bolted at that position: the
+hold type and its orientation. A token identifies only ``(position, role)``, so without this
+the model can only memorize each of the 537 positions on its own, and cannot carry over that a
+given hold is almost always a foot. See ``physical.py``.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +19,8 @@ from torch import Tensor, nn
 class GeneratorConfig:
     vocabulary_size: int
     max_sequence_length: int
+    num_hold_types: int
+    num_layouts: int
     width: int = 192
     heads: int = 8
     layers: int = 6
@@ -85,12 +93,31 @@ class BoulderGenerator(nn.Module):
     tying it halves that cost while keeping the two views of a token consistent.
     """
 
-    def __init__(self, config: GeneratorConfig) -> None:
+    def __init__(
+        self,
+        config: GeneratorConfig,
+        hold_type_ids: Tensor | None = None,
+        hold_orientations: Tensor | None = None,
+    ) -> None:
         super().__init__()
         self.config = config
         self.token_embedding = nn.Embedding(config.vocabulary_size, config.width)
         self.position_embedding = nn.Embedding(config.max_sequence_length, config.width)
+        # +1 because index 0 means "not a hold token".
+        self.hold_type_embedding = nn.Embedding(config.num_hold_types + 1, config.width)
+        self.orientation_projection = nn.Linear(2, config.width)
         self.input_dropout = nn.Dropout(config.dropout)
+
+        # Lookup tables, not parameters: [layouts, vocabulary] and [layouts, vocabulary, 2].
+        shape = (config.num_layouts, config.vocabulary_size)
+        self.register_buffer(
+            "hold_type_ids",
+            torch.zeros(shape, dtype=torch.long) if hold_type_ids is None else hold_type_ids,
+        )
+        self.register_buffer(
+            "hold_orientations",
+            torch.zeros((*shape, 2)) if hold_orientations is None else hold_orientations,
+        )
         self.blocks = nn.ModuleList(CausalBlock(config) for _ in range(config.layers))
         self.output_norm = nn.LayerNorm(config.width)
         self.output_bias = nn.Parameter(torch.zeros(config.vocabulary_size))
@@ -109,14 +136,26 @@ class BoulderGenerator(nn.Module):
             if name.endswith(("output.weight", "feed_forward.3.weight")):
                 nn.init.normal_(parameter, mean=0.0, std=residual_scale)
 
-    def forward(self, tokens: Tensor) -> Tensor:
+    def forward(self, tokens: Tensor, layouts: Tensor) -> Tensor:
+        """``tokens`` is ``[batch, length]``; ``layouts`` is one layout index per row.
+
+        The layout cannot be read off the tokens, because guidance blanks the prefix that
+        carries it — and the wall does not change when the request is dropped.
+        """
+
         length = tokens.shape[1]
         if length > self.config.max_sequence_length:
             raise ValueError(
                 f"Sequence of {length} exceeds the model's {self.config.max_sequence_length}"
             )
         positions = torch.arange(length, device=tokens.device)
-        hidden = self.token_embedding(tokens) + self.position_embedding(positions)
+        rows = layouts.reshape(-1, 1).expand(-1, length)
+        hidden = (
+            self.token_embedding(tokens)
+            + self.position_embedding(positions)
+            + self.hold_type_embedding(self.hold_type_ids[rows, tokens])
+            + self.orientation_projection(self.hold_orientations[rows, tokens])
+        )
         hidden = self.input_dropout(hidden)
         mask = self.causal_mask[:length, :length]
         for block in self.blocks:

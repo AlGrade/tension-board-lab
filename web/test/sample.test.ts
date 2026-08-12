@@ -10,9 +10,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { BoulderGenerator, nucleus, rankCandidates } from "../src/generate/sample";
-import { computeStyleFeatures } from "../src/style";
 import { positionKey } from "../src/model/tokenizer";
-import type { BoardArtifact, GeneratorArtifact, StyleArtifact } from "../src/types";
+import type { BoardArtifact, GeneratorArtifact } from "../src/types";
 
 const DATA = new URL("../public/data/", import.meta.url);
 const MODEL = fileURLToPath(new URL("../public/models/generator.onnx", import.meta.url));
@@ -22,7 +21,6 @@ function readJson<T>(name: string): T {
 }
 
 const board = readJson<BoardArtifact>("board.json");
-const style = readJson<StyleArtifact>("style.json");
 const artifact = readJson<GeneratorArtifact>("generator.json");
 const hasModel = existsSync(MODEL);
 
@@ -70,7 +68,7 @@ describe("ranking", () => {
         { expectedGradeIndex: 5, confidence: 0.4, grade: "V5" },
         { expectedGradeIndex: 5, confidence: 0.4, grade: "V5" },
       ],
-      { targetIndex: 5, style },
+      { targetIndex: 5 },
     );
     expect(ranked[0].expectedGrade).toBe(5);
     expect(ranked.map((c) => c.score)).toEqual([...ranked.map((c) => c.score)].sort((a, b) => a - b));
@@ -83,7 +81,7 @@ describe("ranking", () => {
         { expectedGradeIndex: 5, confidence: 0.4, grade: "V5" },
         { expectedGradeIndex: 5, confidence: 0.4, grade: "V5" },
       ],
-      { targetIndex: 5, style },
+      { targetIndex: 5 },
     );
     expect(ranked[0].logLikelihood).toBe(-10);
   });
@@ -93,7 +91,7 @@ describe.skipIf(!hasModel)("sampling against the real model", () => {
   const layout = "mirror";
 
   async function sample(overrides: Record<string, unknown> = {}) {
-    const generator = await BoulderGenerator.load(MODEL, artifact, board, style);
+    const generator = await BoulderGenerator.load(MODEL, artifact, board);
     return generator.sample({
       layout,
       angle: 40,
@@ -163,11 +161,4 @@ describe.skipIf(!hasModel)("sampling against the real model", () => {
     expect(holds(other)).not.toBe(holds(first));
   }, 300_000);
 
-  it("produces problems style features can be computed for", async () => {
-    for (const { problem } of await sample({ count: 3 })) {
-      const features = computeStyleFeatures(problem.holds);
-      expect(features.handCount).toBeGreaterThanOrEqual(0);
-      expect(features.heightSpan).toBeGreaterThanOrEqual(0);
-    }
-  }, 300_000);
 });

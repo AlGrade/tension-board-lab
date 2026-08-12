@@ -6,7 +6,14 @@ import torch
 from tension_board_lab.generator.model import BoulderGenerator, GeneratorConfig, sequence_loss
 from tension_board_lab.generator.tokenizer import MAX_SEQUENCE_LENGTH, PAD
 
-CONFIG = GeneratorConfig(vocabulary_size=64, max_sequence_length=MAX_SEQUENCE_LENGTH, layers=2)
+CONFIG = GeneratorConfig(
+    vocabulary_size=64,
+    max_sequence_length=MAX_SEQUENCE_LENGTH,
+    num_hold_types=8,
+    num_layouts=2,
+    layers=2,
+)
+LAYOUTS = torch.zeros(1, dtype=torch.long)
 
 
 def model() -> BoulderGenerator:
@@ -24,7 +31,7 @@ def test_initial_predictions_are_close_to_uniform() -> None:
     network = model()
     tokens = torch.randint(0, CONFIG.vocabulary_size, (8, 16))
     with torch.no_grad():
-        logits = network(tokens)
+        logits = network(tokens, torch.zeros(8, dtype=torch.long))
     loss = torch.nn.functional.cross_entropy(
         logits.reshape(-1, CONFIG.vocabulary_size),
         torch.randint(0, CONFIG.vocabulary_size, (8 * 16,)),
@@ -33,7 +40,9 @@ def test_initial_predictions_are_close_to_uniform() -> None:
 
 
 def test_output_shape_covers_the_vocabulary() -> None:
-    logits = model()(torch.randint(0, CONFIG.vocabulary_size, (3, 12)))
+    logits = model()(
+        torch.randint(0, CONFIG.vocabulary_size, (3, 12)), torch.zeros(3, dtype=torch.long)
+    )
     assert logits.shape == (3, 12, CONFIG.vocabulary_size)
 
 
@@ -41,10 +50,10 @@ def test_attention_cannot_see_later_tokens() -> None:
     network = model()
     tokens = torch.randint(0, CONFIG.vocabulary_size, (1, 10))
     with torch.no_grad():
-        original = network(tokens)
+        original = network(tokens, LAYOUTS)
         changed = tokens.clone()
         changed[0, -1] = (changed[0, -1] + 1) % CONFIG.vocabulary_size
-        after = network(changed)
+        after = network(changed, LAYOUTS)
     # Changing the last token may only move the last position's prediction.
     assert torch.allclose(original[:, :-1], after[:, :-1], atol=1e-6)
     assert not torch.allclose(original[:, -1], after[:, -1], atol=1e-6)
@@ -55,7 +64,9 @@ def test_padding_does_not_change_earlier_predictions() -> None:
     tokens = torch.randint(1, CONFIG.vocabulary_size, (1, 8))
     padded = torch.cat((tokens, torch.full((1, 4), PAD)), dim=1)
     with torch.no_grad():
-        assert torch.allclose(network(tokens), network(padded)[:, :8], atol=1e-6)
+        assert torch.allclose(
+            network(tokens, LAYOUTS), network(padded, LAYOUTS)[:, :8], atol=1e-6
+        )
 
 
 def test_embeddings_are_tied() -> None:
@@ -94,7 +105,7 @@ def test_sequences_longer_than_the_model_are_rejected() -> None:
     network = model()
     too_long = torch.zeros((1, MAX_SEQUENCE_LENGTH + 1), dtype=torch.long)
     try:
-        network(too_long)
+        network(too_long, LAYOUTS)
     except ValueError:
         return
     raise AssertionError("expected a ValueError for an over-long sequence")

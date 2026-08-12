@@ -9,15 +9,13 @@
 import * as ort from "onnxruntime-web";
 
 import { GeneratorVocabulary, decodeHolds, encodePrefix } from "../model/tokenizer";
-import { computeStyleFeatures, styleDistance } from "../style";
-import type { BoardArtifact, GeneratorArtifact, Problem, StyleArtifact } from "../types";
+import type { BoardArtifact, GeneratorArtifact, Problem } from "../types";
 import { BoulderConstraints } from "./constraints";
 
 export interface SampleRequest {
   layout: string;
   angle: number;
   grade: string;
-  preset?: string;
   count?: number;
   temperature?: number;
   topP?: number;
@@ -71,26 +69,18 @@ export class BoulderGenerator {
     private readonly vocabulary: GeneratorVocabulary,
     private readonly board: BoardArtifact,
     private readonly artifact: GeneratorArtifact,
-    private readonly style: StyleArtifact,
   ) {}
 
   static async load(
     modelUrl: string,
     artifact: GeneratorArtifact,
     board: BoardArtifact,
-    style: StyleArtifact,
   ): Promise<BoulderGenerator> {
     const session = await ort.InferenceSession.create(modelUrl, {
       executionProviders: ["wasm"],
       graphOptimizationLevel: "all",
     });
-    return new BoulderGenerator(
-      session,
-      new GeneratorVocabulary(artifact, style),
-      board,
-      artifact,
-      style,
-    );
+    return new BoulderGenerator(session, new GeneratorVocabulary(artifact), board, artifact);
   }
 
   async sample(request: SampleRequest): Promise<Candidate[]> {
@@ -98,7 +88,6 @@ export class BoulderGenerator {
       layout,
       angle,
       grade,
-      preset,
       count = 12,
       temperature = 1,
       topP = 0.92,
@@ -114,9 +103,7 @@ export class BoulderGenerator {
       layout,
       { maxHolds: request.maxHolds },
     );
-    const style = preset ? this.style.presets[preset]?.conditioning_buckets : undefined;
-
-    const conditional = encodePrefix(vocabulary, { layout, angle, grade, style });
+    const conditional = encodePrefix(vocabulary, { layout, angle, grade });
     const unconditional = encodePrefix(vocabulary, {
       layout,
       angle,
@@ -129,13 +116,18 @@ export class BoulderGenerator {
     for (let index = 0; index < count; index += 1) rows.push([...conditional]);
     for (let index = 0; index < count; index += 1) rows.push([...unconditional]);
 
+    // The wall is the same whether or not the request is blanked, so every row — conditional
+    // and unconditional alike — carries the real layout.
+    const layoutIndex = this.artifact.layout_order.indexOf(layout);
+    if (layoutIndex < 0) throw new Error(`Unknown layout ${layout}`);
+
     const chosen: number[][] = Array.from({ length: count }, () => []);
     const finished = new Array<boolean>(count).fill(false);
     const logLikelihoods = new Array<number>(count).fill(0);
     const steps = request.maxHolds ?? vocabulary.maxHolds;
 
     for (let step = 0; step <= steps; step += 1) {
-      const logits = await this.forward(rows);
+      const logits = await this.forward(rows, layoutIndex);
       const next: number[] = [];
 
       for (let row = 0; row < count; row += 1) {
@@ -205,7 +197,7 @@ export class BoulderGenerator {
   }
 
   /** Last-position logits for every row, as plain arrays. */
-  private async forward(rows: number[][]): Promise<Float32Array[]> {
+  private async forward(rows: number[][], layoutIndex: number): Promise<Float32Array[]> {
     const batch = rows.length;
     const length = rows[0].length;
     const flat = new BigInt64Array(batch * length);
@@ -214,8 +206,10 @@ export class BoulderGenerator {
         flat[index * length + position] = BigInt(token);
       });
     });
+    const layouts = new BigInt64Array(batch).fill(BigInt(layoutIndex));
     const output = await this.session.run({
       tokens: new ort.Tensor("int64", flat, [batch, length]),
+      layouts: new ort.Tensor("int64", layouts, [batch]),
     });
     const logits = output.logits.data as Float32Array;
     const size = this.vocabulary.size;
@@ -230,12 +224,11 @@ export interface RankedCandidate extends Candidate {
   expectedGrade: number;
   confidence: number;
   grade: string;
-  styleDistance: number;
   score: number;
 }
 
 /**
- * Lower is better: grade error, then style error, minus plausibility.
+ * Lower is better: grade error minus plausibility.
  *
  * Mirrors `rank_candidates` in `sample.py`, including its weights.
  */
@@ -244,39 +237,21 @@ export function rankCandidates(
   scored: { expectedGradeIndex: number; confidence: number; grade: string }[],
   options: {
     targetIndex: number;
-    preset?: string;
-    style: StyleArtifact;
     gradeWeight?: number;
-    styleWeight?: number;
     likelihoodWeight?: number;
   },
 ): RankedCandidate[] {
-  const {
-    targetIndex,
-    preset,
-    style,
-    gradeWeight = 1,
-    styleWeight = 0.5,
-    likelihoodWeight = 0.05,
-  } = options;
+  const { targetIndex, gradeWeight = 1, likelihoodWeight = 0.05 } = options;
 
   return candidates
-    .map((candidate, index) => {
-      const distance = preset
-        ? styleDistance(computeStyleFeatures(candidate.problem.holds), preset, style)
-        : 0;
-      const score =
-        gradeWeight * Math.abs(scored[index].expectedGradeIndex - targetIndex) +
-        styleWeight * distance -
-        likelihoodWeight * candidate.logLikelihood;
-      return {
-        ...candidate,
-        expectedGrade: scored[index].expectedGradeIndex,
-        confidence: scored[index].confidence,
-        grade: scored[index].grade,
-        styleDistance: distance,
-        score,
-      };
-    })
+    .map((candidate, index) => ({
+      ...candidate,
+      expectedGrade: scored[index].expectedGradeIndex,
+      confidence: scored[index].confidence,
+      grade: scored[index].grade,
+      score:
+        gradeWeight * Math.abs(scored[index].expectedGradeIndex - targetIndex) -
+        likelihoodWeight * candidate.logLikelihood,
+    }))
     .sort((a, b) => a.score - b.score);
 }

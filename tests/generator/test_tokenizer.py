@@ -15,7 +15,6 @@ from tension_board_lab.generator.tokenizer import (
     encode_prefix,
 )
 from tension_board_lab.schema import HOLD_ROLES, HoldNode, RouteExample
-from tension_board_lab.style import FEATURE_NAMES, bucket_count
 
 CATALOG = HoldCatalog.load()
 VOCABULARY = GeneratorVocabulary.build(CATALOG)
@@ -55,9 +54,9 @@ PROBLEM = board_problem(("start", "foot", "hand", "hand", "finish"))
 
 def test_vocabulary_size_matches_the_board() -> None:
     assert len(VOCABULARY.positions) == 537
-    # 537 positions x 4 roles; the conditioning prefix adds 75 tokens on top.
+    # 537 positions x 4 roles; the conditioning prefix adds 34 tokens on top.
     assert VOCABULARY.size - VOCABULARY.hold_offset == 2148
-    assert VOCABULARY.size == 2223
+    assert VOCABULARY.size == 2182
 
 
 def test_every_token_id_is_claimed_exactly_once() -> None:
@@ -65,11 +64,6 @@ def test_every_token_id_is_claimed_exactly_once() -> None:
     claimed += [VOCABULARY.layout_token(layout) for layout in VOCABULARY.layouts]
     claimed += [VOCABULARY.angle_token(angle) for angle in VOCABULARY.angles]
     claimed += [VOCABULARY.grade_token(grade) for grade in VOCABULARY.grade_labels]
-    for feature in FEATURE_NAMES:
-        claimed += [
-            VOCABULARY.style_token(feature, bucket) for bucket in range(bucket_count(feature))
-        ]
-        claimed.append(VOCABULARY.style_token(feature, None))
     for position in VOCABULARY.positions:
         claimed += [VOCABULARY.hold_token(position, role) for role in HOLD_ROLES]
     assert sorted(claimed) == list(range(VOCABULARY.size))
@@ -139,23 +133,12 @@ def test_unconditional_prefix_replaces_every_conditioning_token() -> None:
         decode(tokens, VOCABULARY, CATALOG)
 
 
-def test_unspecified_style_buckets_get_their_own_token() -> None:
-    specified = encode(PROBLEM, VOCABULARY, CATALOG)
-    unspecified = encode(
-        PROBLEM, VOCABULARY, CATALOG, style=(None,) * len(FEATURE_NAMES)
-    )
-    assert specified[1 + PREFIX_LENGTH :] == unspecified[1 + PREFIX_LENGTH :]
-    assert specified[4 : 1 + PREFIX_LENGTH] != unspecified[4 : 1 + PREFIX_LENGTH]
-
-
 def test_prefix_primes_sampling_without_an_example() -> None:
     prefix = encode_prefix(VOCABULARY, layout="mirror", angle=45, grade="V7")
     assert len(prefix) == 1 + PREFIX_LENGTH
+    assert PREFIX_LENGTH == 3
     assert prefix == encode(
-        board_problem(("start", "hand"), angle=45, grade="V7"),
-        VOCABULARY,
-        CATALOG,
-        style=(None,) * len(FEATURE_NAMES),
+        board_problem(("start", "hand"), angle=45, grade="V7"), VOCABULARY, CATALOG
     )[: 1 + PREFIX_LENGTH]
 
 

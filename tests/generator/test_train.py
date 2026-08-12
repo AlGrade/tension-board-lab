@@ -17,7 +17,6 @@ from tension_board_lab.generator.train import (
     select_generator_examples,
 )
 from tension_board_lab.schema import HoldNode, RouteExample
-from tension_board_lab.style import FEATURE_NAMES
 
 CATALOG = HoldCatalog.load()
 VOCABULARY = GeneratorVocabulary.build(CATALOG)
@@ -53,7 +52,7 @@ PROBLEMS = [
 
 
 def test_targets_skip_the_conditioning_prefix() -> None:
-    batch = collate_sequences(encode_dataset(PROBLEMS, VOCABULARY, CATALOG), VOCABULARY)
+    batch = collate_sequences(encode_dataset(PROBLEMS, VOCABULARY, CATALOG))
     # The prefix is given, not predicted, so its target positions are ignored.
     assert (batch["targets"][:, :PREFIX_LENGTH] == PAD).all()
     assert (batch["targets"][:, PREFIX_LENGTH:] != PAD).any()
@@ -61,7 +60,7 @@ def test_targets_skip_the_conditioning_prefix() -> None:
 
 def test_inputs_and_targets_are_shifted_by_one() -> None:
     encoded = encode_dataset([PROBLEMS[0]], VOCABULARY, CATALOG)
-    batch = collate_sequences(encoded, VOCABULARY)
+    batch = collate_sequences(encoded)
     tokens = encoded[0].tokens
     assert batch["inputs"][0, : len(tokens) - 1].tolist() == list(tokens[:-1])
     predicted = batch["targets"][0, PREFIX_LENGTH : len(tokens) - 1].tolist()
@@ -70,7 +69,7 @@ def test_inputs_and_targets_are_shifted_by_one() -> None:
 
 def test_shorter_sequences_are_padded_not_truncated() -> None:
     encoded = encode_dataset(PROBLEMS, VOCABULARY, CATALOG)
-    batch = collate_sequences(encoded, VOCABULARY)
+    batch = collate_sequences(encoded)
     longest = max(len(problem.tokens) for problem in encoded)
     assert batch["inputs"].shape[1] == longest - 1
     shortest = min(range(len(encoded)), key=lambda index: len(encoded[index].tokens))
@@ -95,27 +94,15 @@ def test_weights_follow_ascent_counts() -> None:
 def test_guidance_dropout_blanks_the_whole_prefix() -> None:
     random.seed(0)
     tokens = list(encode(PROBLEMS[0], VOCABULARY, CATALOG))
-    randomize_prefix(tokens, VOCABULARY, guidance_dropout=1.0, style_dropout=0.0)
+    randomize_prefix(tokens, guidance_dropout=1.0)
     assert tokens[1 : 1 + PREFIX_LENGTH] == [UNCOND] * PREFIX_LENGTH
-
-
-def test_style_dropout_only_touches_style_tokens() -> None:
-    random.seed(0)
-    original = list(encode(PROBLEMS[0], VOCABULARY, CATALOG))
-    tokens = list(original)
-    randomize_prefix(tokens, VOCABULARY, guidance_dropout=0.0, style_dropout=1.0)
-    # Layout, angle, and grade survive.
-    assert tokens[1:4] == original[1:4]
-    expected = [VOCABULARY.style_token(feature, None) for feature in FEATURE_NAMES]
-    assert tokens[4 : 1 + PREFIX_LENGTH] == expected
-    assert tokens[1 + PREFIX_LENGTH :] == original[1 + PREFIX_LENGTH :]
 
 
 def test_no_dropout_leaves_the_prefix_alone() -> None:
     random.seed(0)
     original = list(encode(PROBLEMS[0], VOCABULARY, CATALOG))
     tokens = list(original)
-    randomize_prefix(tokens, VOCABULARY, guidance_dropout=0.0, style_dropout=0.0)
+    randomize_prefix(tokens, guidance_dropout=0.0)
     assert tokens == original
 
 
@@ -142,17 +129,21 @@ def test_a_batch_runs_through_the_model() -> None:
     from tension_board_lab.generator.tokenizer import MAX_SEQUENCE_LENGTH
 
     torch.manual_seed(0)
-    batch = collate_sequences(encode_dataset(PROBLEMS, VOCABULARY, CATALOG), VOCABULARY)
+    batch = collate_sequences(encode_dataset(PROBLEMS, VOCABULARY, CATALOG))
     model = BoulderGenerator(
-        GeneratorConfig(
+GeneratorConfig(
             vocabulary_size=VOCABULARY.size,
             max_sequence_length=MAX_SEQUENCE_LENGTH,
+            num_hold_types=106,
+            num_layouts=len(VOCABULARY.layouts),
             width=32,
             heads=4,
             layers=2,
         )
     )
-    loss = sequence_loss(model(batch["inputs"]), batch["targets"], batch["weights"], PAD)
+    loss = sequence_loss(
+        model(batch["inputs"], batch["layouts"]), batch["targets"], batch["weights"], PAD
+    )
     assert torch.isfinite(loss)
     loss.backward()
     assert model.token_embedding.weight.grad is not None

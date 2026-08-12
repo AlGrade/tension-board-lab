@@ -66,7 +66,6 @@ export interface GeneratorArtifact {
     layout_offset: number;
     angle_offset: number;
     grade_offset: number;
-    style_offsets: number[];
     hold_offset: number;
   };
   size: number;
@@ -75,23 +74,11 @@ export interface GeneratorArtifact {
   max_sequence_length: number;
   max_holds: number;
   roles: HoldRole[];
+  /** Index of each layout in the model's physical lookup tables. */
+  layout_order: string[];
   constraints: {
     max_start_height: number;
     min_finish_height: number;
     min_holds: number;
   };
-}
-
-export interface StyleArtifact {
-  feature_names: string[];
-  bucket_edges: Record<string, number[]>;
-  feature_scales: Record<string, number>;
-  hand_path_roles: HoldRole[];
-  presets: Record<
-    string,
-    {
-      bounds: Record<string, [number | null, number | null]>;
-      conditioning_buckets: (number | null)[];
-    }
-  >;
 }

@@ -18,13 +18,13 @@ it reaches a mean absolute error of 0.935 V grades, with 77.97% of predictions w
 grade. See [`src/tension_board_lab/`](src/tension_board_lab/README.md) for the architecture, the
 training procedure, and how to rebuild the datasets.
 
-The **generator** proposes new problems for a requested grade, angle, and style, using the grade
+The **generator** proposes new problems for a requested grade and angle, using the grade
 predictor as an independent critic. Every sampled problem is valid by construction, and none of
-480 evaluated samples reproduced a problem from the corpus.
+the evaluated samples reproduced a problem from the corpus.
 
-The **web application** runs both models in the browser with no backend. Ask it for a grade,
-an angle, and a style and it samples candidates, ranks them with the critic, and lets you edit
-the result while the grade updates. It is tested for exact parity with the Python side.
+The **web application** runs both models in the browser with no backend. Ask it for a grade and
+an angle and it samples candidates, ranks them with the critic, and lets you edit the result
+while the grade updates. It is tested for exact parity with the Python side.
 
 ## Setup
 

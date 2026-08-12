@@ -8,7 +8,6 @@ from tension_board_lab.generator.model import BoulderGenerator, GeneratorConfig
 from tension_board_lab.generator.sample import nucleus_filter, rank_candidates, sample_problems
 from tension_board_lab.generator.tokenizer import MAX_SEQUENCE_LENGTH, GeneratorVocabulary
 from tension_board_lab.schema import RouteExample
-from tension_board_lab.style import PRESETS
 
 CATALOG = HoldCatalog.load()
 VOCABULARY = GeneratorVocabulary.build(CATALOG)
@@ -19,9 +18,11 @@ def untrained_model() -> BoulderGenerator:
 
     torch.manual_seed(0)
     return BoulderGenerator(
-        GeneratorConfig(
+GeneratorConfig(
             vocabulary_size=VOCABULARY.size,
             max_sequence_length=MAX_SEQUENCE_LENGTH,
+            num_hold_types=106,
+            num_layouts=len(VOCABULARY.layouts),
             width=32,
             heads=4,
             layers=2,
@@ -97,11 +98,6 @@ def test_sampling_is_reproducible_for_one_seed() -> None:
     assert [problem.holds for problem, _ in first] == [problem.holds for problem, _ in second]
 
 
-def test_a_style_preset_can_drive_the_prefix() -> None:
-    problems = sample(style=PRESETS["power"].conditioning_buckets())
-    assert len(problems) == 12
-
-
 def test_nucleus_filter_keeps_the_smallest_covering_set() -> None:
     row = torch.tensor([0.5, 0.3, 0.15, 0.05])
     filtered = nucleus_filter(row, 0.7)
@@ -119,9 +115,7 @@ def test_ranking_prefers_the_requested_grade() -> None:
     likelihoods = [-10.0, -10.0, -10.0]
     # Expected grades 5.0, 7.0, 3.0 against a target of 5.
     scores = [(5.0, 0.4), (7.0, 0.4), (3.0, 0.4)]
-    ranked = rank_candidates(
-        problems, likelihoods, scores, target_index=5.0, preset=None
-    )
+    ranked = rank_candidates(problems, likelihoods, scores, target_index=5.0)
     assert ranked[0].expected_grade == 5.0
     assert [candidate.score for candidate in ranked] == sorted(
         candidate.score for candidate in ranked
@@ -131,10 +125,6 @@ def test_ranking_prefers_the_requested_grade() -> None:
 def test_ranking_rewards_a_higher_likelihood_when_grades_tie() -> None:
     problems = [problem for problem, _ in sample(count=2)]
     ranked = rank_candidates(
-        problems,
-        [-30.0, -10.0],
-        [(5.0, 0.4), (5.0, 0.4)],
-        target_index=5.0,
-        preset=None,
+        problems, [-30.0, -10.0], [(5.0, 0.4), (5.0, 0.4)], target_index=5.0
     )
     assert ranked[0].log_likelihood == -10.0

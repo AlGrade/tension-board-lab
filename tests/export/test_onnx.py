@@ -94,7 +94,8 @@ def test_critic_matches_pytorch_at_any_shape(critic_onnx, batch, nodes) -> None:
 
 
 @needs_generator
-@pytest.mark.parametrize("batch,length", [(1, 11), (1, 47), (4, 20), (24, 13), (2, 47)])
+# Traced at batch=2, length=12; MAX_SEQUENCE_LENGTH is the upper bound.
+@pytest.mark.parametrize("batch,length", [(1, 5), (1, 40), (4, 20), (24, 13), (2, 40)])
 def test_generator_matches_pytorch_at_any_shape(generator_onnx, batch, length) -> None:
     payload = torch.load(GENERATOR_CHECKPOINT, map_location="cpu", weights_only=False)
     vocabulary = GeneratorVocabulary.from_dict(payload["vocabulary"])
@@ -103,9 +104,12 @@ def test_generator_matches_pytorch_at_any_shape(generator_onnx, batch, length) -
     model.eval()
     torch.manual_seed(length)
     tokens = torch.randint(0, vocabulary.size, (batch, length))
+    layouts = torch.zeros(batch, dtype=torch.long)
     with torch.no_grad():
-        expected = model(tokens).numpy()
-    actual = session(generator_onnx).run(["logits"], {"tokens": tokens.numpy()})[0]
+        expected = model(tokens, layouts).numpy()
+    actual = session(generator_onnx).run(
+        ["logits"], {"tokens": tokens.numpy(), "layouts": layouts.numpy()}
+    )[0]
     assert actual.shape == expected.shape
     assert np.abs(actual - expected).max() < 1e-4
 

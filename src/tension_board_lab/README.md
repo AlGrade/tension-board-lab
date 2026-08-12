@@ -8,8 +8,8 @@ Give the **grade critic** the wall angle and the selected holds. It returns a V 
 confidence—for example, `V9` with `38%` confidence. The target is the community's consensus
 grade at that particular angle, not an objective measure of difficulty.
 
-Give the **generator** an angle, a grade, and optionally a style, and it produces problems the
-critic then scores and ranks.
+Give the **generator** an angle and a grade, and it produces problems the critic then scores
+and ranks.
 
 ```mermaid
 flowchart LR
@@ -31,15 +31,16 @@ Shared modules sit at the top level of the package; each model has its own subpa
 | `aurora.py` | Import from the Aurora SQLite database into JSONL |
 | `data.py` | Vocabulary, batching, and the split logic |
 | `catalog.py` | The board's fixed placements; resolves a position to a hold |
-| `style.py` | Rule-based style features, buckets, and presets |
 | `grade/model.py` | The geometry-biased graph transformer and its loss |
 | `grade/train.py` | Two-stage training, calibration, and evaluation |
 | `grade/predict.py` | Single-problem inference |
 | `generator/tokenizer.py` | Problem to token sequence for the generator |
+| `generator/physical.py` | What is bolted at each position: hold type and orientation |
 | `generator/constraints.py` | Legal-token masks that keep sampled problems valid |
 | `generator/model.py` | The decoder-only transformer and its loss |
 | `generator/train.py` | Generator training with classifier-free guidance |
 | `generator/sample.py` | Sampling, critic scoring, and candidate ranking |
+| `generator/evaluate.py` | Measurement harness with confidence intervals |
 
 ## The data
 
@@ -163,15 +164,24 @@ See [`../../examples/route.json`](../../examples/route.json) for the input forma
 
 ## The generator
 
-A decoder-only transformer over token sequences, 3,104,175 parameters. A sequence is
+A decoder-only transformer over token sequences, 3,116,038 parameters. A sequence is
 
 ```
-[BOS] layout angle grade style x7 | hold hold ... hold | [EOS]
+[BOS] layout angle grade | hold hold ... hold | [EOS]
 ```
 
 Within one layout a position identifies exactly one hold, so a hold token carries only
 `(position, role)`—type and orientation come from the catalog. That keeps the vocabulary at
-2,223 tokens and the longest sequence at 47.
+2,182 tokens and the longest sequence at 40.
+
+The model is nevertheless *told* the hold type and orientation, as an additive embedding on
+each token. Without it a token identifies only a position, so the model can learn what a
+position affords only by memorizing each of the 537 separately. Hold type generalizes where
+position cannot: 56 of the 106 types are used for one role more than 70% of the time,
+`plastic:7` is a foot 99.4% of the time, and 70.3% of all foot placements sit on types that
+are mostly feet. The same position carries a different hold on mirror than on spray, so the
+layout is a second model input rather than something read off the tokens—guidance blanks the
+request, not the wall.
 
 Holds are emitted bottom to top, in `(y, x)` order. Problems are sets, not sequences, so the
 order is a convention rather than a climbing sequence; it puts starts early and finishes late.
@@ -180,9 +190,7 @@ order is a convention rather than a climbing sequence; it puts starts early and 
 
 The prefix has fixed width, so classifier-free guidance can blank it without shifting the
 holds. Training replaces the whole prefix with `UNCOND` 10% of the time, which gives sampling a
-guidance scale that trades variety for fidelity to the request. Separately, each style feature
-is dropped to its "any" slot 25% of the time, because a preset pins only two or three of the
-seven features.
+guidance scale that trades variety for fidelity to the request.
 
 ### Training
 
@@ -190,6 +198,19 @@ The generator trains on problems with at least one ascent, minus every configura
 holds out—44,234 problems, split 36,169 / 4,382 / 3,683 by the same `split_examples` the critic
 uses. Sharing that function is the point: a copy would eventually drift and quietly invalidate
 every "the generator hits the target grade" number.
+
+The training split is then mirrored. The mirror layout is exactly symmetric—all 498 positions
+have a partner carrying the same hold type—so reflecting a problem left to right yields another
+real problem, and 64.7% of the pool is on that layout. That takes the training set from 36,169
+to **59,435**. Only the training split is augmented; reflecting the holdouts would inflate them.
+
+A reflected copy does **not** reliably inherit its original's signature, which is the obvious
+thing to assume and is wrong. `encode` re-reads hold type and orientation from the catalog, and
+17 of the 498 mirror positions are orientation-asymmetric, so 29.7% of copies canonicalize to a
+different configuration than the problem they came from. Every copy is therefore checked
+against the held-out signatures directly rather than trusted to inherit a split. On the current
+data nothing is dropped—no copy collides—but the check is what makes that a guarantee instead
+of a coincidence.
 
 ```bash
 tension-train-generator data/processed/tb2_12x12_pretrain.jsonl \
@@ -207,26 +228,34 @@ and a finish, and starts and finishes are held to loose height bounds.
 ```bash
 tension-sample checkpoints/generator/tb2_12x12.pt \
   --critic checkpoints/grade/tb2_12x12.pt \
-  --grade V5 --angle 40 --style power
+  --grade V5 --angle 40
 ```
 
-Candidates go through the critic in one batch and are ranked by grade error, style distance,
-and sequence likelihood. The critic's **expectation** is used, not its argmax, which is too
-noisy to rank by at around 38% confidence.
+Candidates go through the critic in one batch and are ranked by grade error and sequence
+likelihood. The critic's **expectation** is used, not its argmax, which is too noisy to rank by
+at around 38% confidence.
 
-### Results
+### Measuring it
 
-Test negative log-likelihood is 3.481 per token, against 7.707 for a uniform choice over the
-vocabulary. Over 480 samples: **100% valid**, **100% novel**—no sampled problem reproduced any
-of the 35,524 configurations in the corpus. Grade error against the critic falls from 1.027 to
-0.752 V grades as guidance rises from 1.0 to 2.5, and conditioning on the dyno preset lifts its
-match rate from 6.2% to 78.1%.
+```bash
+tension-eval-generator --output reports/generator/latest.metrics.json
+```
 
-Feet are under-generated—2.7 per problem against the corpus 3.35—and problems run short, at
-most 21 holds against the corpus 35. Technical steering is weak at 3.1% for exactly that
-reason: the preset needs a high foot-to-hand ratio. Grade fidelity is agreement with the
-critic, not with ground truth. The full report is in
-[`../../reports/generator/tb2_12x12.metrics.json`](../../reports/generator/tb2_12x12.metrics.json).
+Ad-hoc sampling runs were too small to decide anything—two runs of about a hundred samples put
+the grade error at guidance 2.5 at 0.752 and at 0.949. Every number the harness reports
+therefore carries a bootstrap confidence interval, over roughly 240 samples per guidance scale,
+with a fixed seed and on CPU so a run can be repeated exactly and compared across machines.
+
+It reports grade error against the critic, roles and hold count against the corpus, novelty
+against every configuration signature in the corpus, validity, and the mean pairwise Jaccard
+distance within a candidate set. That last one had never been measured; candidates turn out to
+be almost entirely distinct, around 0.96.
+
+Two things to keep in mind reading it. Grade fidelity is agreement with the *critic*, not with
+ground truth—meaningful only because the generator never saw the critic's holdout
+configurations. And guidance trades one goal against the other: it sharpens grade fidelity
+while pulling roles and hold counts away from the corpus, so the right setting is a choice, not
+a maximum. Reports live in [`../../reports/generator/`](../../reports/generator/).
 
 ## Exporting for the browser
 
@@ -238,7 +267,7 @@ tension-export-onnx
 tension-export-web --database data/raw/tension.sqlite3
 ```
 
-The int8 graphs are 3.10 MB for the critic and 3.69 MB for the generator. Quantization is
+The int8 graphs are 3.10 MB for the critic and 3.77 MB for the generator. Quantization is
 close to free: over 200 real problems the int8 critic agrees with fp32 on 98.0% of predicted
 grades, and the fp32 graph matches PyTorch to about 1e-6.
 
@@ -247,8 +276,7 @@ grades, and the fp32 graph matches PyTorch to about 1e-6.
 | `models/*.onnx`, `models/*.int8.onnx` | Both graphs, dynamic in batch and length |
 | `data/board.json` | Every placement per layout, with raw coordinates and Aurora's role colors |
 | `data/critic.json` | Hold-type indices, grade labels, temperature, and the input contract |
-| `data/generator.json` | Token vocabulary, special tokens, and the sampling constraints |
-| `data/style.json` | Feature names, bucket edges, scales, and presets |
+| `data/generator.json` | Token vocabulary, special tokens, layout order, sampling constraints |
 | `data/fixtures.json` | Real problems with the tensors and logits PyTorch produced for them |
 | `data/bluetooth.json` | Placement ids for the wall frames; needs `--database` |
 

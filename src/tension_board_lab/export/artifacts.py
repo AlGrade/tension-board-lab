@@ -39,14 +39,6 @@ from ..generator.tokenizer import (
 from ..grade.model import ModelConfig, TensionGradeTransformer
 from ..grade.train import forward_batch
 from ..schema import HOLD_ROLES, RouteExample, load_jsonl
-from ..style import (
-    BUCKET_EDGES,
-    FEATURE_NAMES,
-    FEATURE_SCALES,
-    PRESETS,
-    compute_style_features,
-    style_buckets,
-)
 
 # Aurora's role colours, so the rendered board matches the app climbers already use.
 ROLE_COLORS = {"start": "00DD00", "hand": "0066FF", "finish": "FF0000", "foot": "FF00FF"}
@@ -114,28 +106,11 @@ def generator_artifact(vocabulary: GeneratorVocabulary) -> dict[str, Any]:
         "max_sequence_length": MAX_SEQUENCE_LENGTH,
         "max_holds": MAX_HOLDS,
         "roles": list(HOLD_ROLES),
+        "layout_order": list(vocabulary.layouts),
         "constraints": {
             "max_start_height": generator_constraints.MAX_START_HEIGHT,
             "min_finish_height": generator_constraints.MIN_FINISH_HEIGHT,
             "min_holds": generator_constraints.MIN_HOLDS,
-        },
-    }
-
-
-def style_artifact() -> dict[str, Any]:
-    return {
-        "feature_names": list(FEATURE_NAMES),
-        "bucket_edges": {name: list(edges) for name, edges in BUCKET_EDGES.items()},
-        "feature_scales": dict(FEATURE_SCALES),
-        "hand_path_roles": ["start", "hand", "finish"],
-        "presets": {
-            name: {
-                "bounds": {
-                    feature: list(bounds) for feature, bounds in preset.bounds.items()
-                },
-                "conditioning_buckets": list(preset.conditioning_buckets()),
-            }
-            for name, preset in PRESETS.items()
         },
     }
 
@@ -167,16 +142,6 @@ def parity_fixtures(
                     "angles": [batch["angles"][0].item()],
                 },
                 "logits": [round(value, 6) for value in logits[0].tolist()],
-                # style.ts is a hand-written mirror of style.py; these are what it must
-                # reproduce for this exact problem.
-                "style": {
-                    "features": compute_style_features(example).as_dict(),
-                    "buckets": list(style_buckets(compute_style_features(example))),
-                    "preset_distances": {
-                        name: preset.distance(compute_style_features(example))
-                        for name, preset in PRESETS.items()
-                    },
-                },
             }
         )
     return fixtures
@@ -198,14 +163,6 @@ def generator_fixtures(
             "problem": example.as_dict(),
             "tokens": list(encode(example, vocabulary, catalog)),
             "unconditional": list(encode(example, vocabulary, catalog, unconditional=True)),
-            "style_unspecified": list(
-                encode(
-                    example,
-                    vocabulary,
-                    catalog,
-                    style=(None,) * len(FEATURE_NAMES),
-                )
-            ),
         }
         for example in examples
         if example.source_layout is not None and example.grade is not None
@@ -213,22 +170,14 @@ def generator_fixtures(
 
     prefixes = []
     for layout in vocabulary.layouts:
-        for angle, grade, preset in (
-            (35, "V2", None),
-            (40, "V5", "power"),
-            (55, "V10", "dyno"),
-        ):
-            style = PRESETS[preset].conditioning_buckets() if preset else None
+        for angle, grade in ((35, "V2"), (40, "V5"), (55, "V10")):
             prefixes.append(
                 {
                     "layout": layout,
                     "angle": angle,
                     "grade": grade,
-                    "preset": preset,
                     "tokens": list(
-                        encode_prefix(
-                            vocabulary, layout=layout, angle=angle, grade=grade, style=style
-                        )
+                        encode_prefix(vocabulary, layout=layout, angle=angle, grade=grade)
                     ),
                 }
             )
@@ -358,7 +307,6 @@ def main() -> None:
     written: dict[str, int] = {}
 
     written["board.json"] = write_json(args.output / "board.json", board_artifact(catalog))
-    written["style.json"] = write_json(args.output / "style.json", style_artifact())
 
     critic_checkpoint = torch.load(args.critic, map_location="cpu", weights_only=False)
     critic_vocabulary = Vocabulary.from_dict(critic_checkpoint["vocabulary"])

@@ -19,57 +19,54 @@
     "layout": "mirror",
     "angle": 40,
     "count": 48,
-    "seed": 17,
-    "temperature": 1.0,
-    "top_p": 0.92,
-    "max_holds": 35
+    "seed": 17
   },
   "by_guidance": [
     {
       "guidance": 1.0,
       "grade_mae": {
-        "mean": 1.0673,
-        "low": 0.9694,
-        "high": 1.1695,
+        "mean": 1.1143,
+        "low": 1.0158,
+        "high": 1.2186,
         "n": 240
       },
       "holds_per_problem": {
-        "mean": 9.9583,
-        "low": 9.6458,
-        "high": 10.2958,
+        "mean": 9.7208,
+        "low": 9.4375,
+        "high": 10.0125,
         "n": 240
       },
       "roles_per_problem": {
         "start": {
-          "mean": 1.5167,
-          "low": 1.45,
-          "high": 1.5833,
+          "mean": 1.6208,
+          "low": 1.5583,
+          "high": 1.6875,
           "n": 240
         },
         "hand": {
-          "mean": 4.2667,
-          "low": 4.1,
-          "high": 4.4417,
+          "mean": 4.2042,
+          "low": 4.05,
+          "high": 4.3583,
           "n": 240
         },
         "foot": {
-          "mean": 3.15,
-          "low": 2.9542,
-          "high": 3.3667,
+          "mean": 2.8875,
+          "low": 2.7208,
+          "high": 3.0625,
           "n": 240
         },
         "finish": {
-          "mean": 1.025,
-          "low": 1.0083,
-          "high": 1.0458,
+          "mean": 1.0083,
+          "low": 1.0,
+          "high": 1.0208,
           "n": 240
         }
       },
       "diversity": {
-        "mean": 0.9748,
-        "low": 0.9642,
-        "high": 0.9822,
-        "n": 5
+        "mean": 0.9762,
+        "low": 0.9751,
+        "high": 0.9773,
+        "n": 5640
       },
       "novel_fraction": {
         "mean": 1.0,
@@ -88,48 +85,48 @@
     {
       "guidance": 1.5,
       "grade_mae": {
-        "mean": 0.9055,
-        "low": 0.8196,
-        "high": 0.9873,
+        "mean": 0.8924,
+        "low": 0.8092,
+        "high": 0.9803,
         "n": 240
       },
       "holds_per_problem": {
-        "mean": 9.9083,
-        "low": 9.5792,
-        "high": 10.2875,
+        "mean": 9.4875,
+        "low": 9.2083,
+        "high": 9.7917,
         "n": 240
       },
       "roles_per_problem": {
         "start": {
-          "mean": 1.5,
-          "low": 1.4375,
-          "high": 1.5667,
+          "mean": 1.5708,
+          "low": 1.5042,
+          "high": 1.6375,
           "n": 240
         },
         "hand": {
-          "mean": 4.2708,
-          "low": 4.0792,
-          "high": 4.5,
+          "mean": 4.1208,
+          "low": 3.9792,
+          "high": 4.2667,
           "n": 240
         },
         "foot": {
-          "mean": 3.0958,
-          "low": 2.9167,
-          "high": 3.3,
+          "mean": 2.7833,
+          "low": 2.625,
+          "high": 2.9625,
           "n": 240
         },
         "finish": {
-          "mean": 1.0417,
-          "low": 1.0042,
-          "high": 1.1042,
+          "mean": 1.0125,
+          "low": 1.0,
+          "high": 1.0292,
           "n": 240
         }
       },
       "diversity": {
-        "mean": 0.9706,
-        "low": 0.9546,
-        "high": 0.9808,
-        "n": 5
+        "mean": 0.9701,
+        "low": 0.9688,
+        "high": 0.9714,
+        "n": 5640
       },
       "novel_fraction": {
         "mean": 1.0,
@@ -148,48 +145,48 @@
     {
       "guidance": 2.5,
       "grade_mae": {
-        "mean": 0.7907,
-        "low": 0.7166,
-        "high": 0.8687,
+        "mean": 0.721,
+        "low": 0.6493,
+        "high": 0.7888,
         "n": 240
       },
       "holds_per_problem": {
-        "mean": 9.6458,
-        "low": 9.3375,
-        "high": 9.9958,
+        "mean": 9.2375,
+        "low": 8.9375,
+        "high": 9.55,
         "n": 240
       },
       "roles_per_problem": {
         "start": {
-          "mean": 1.5667,
-          "low": 1.5042,
-          "high": 1.6333,
+          "mean": 1.5917,
+          "low": 1.5292,
+          "high": 1.6542,
           "n": 240
         },
         "hand": {
-          "mean": 4.1833,
-          "low": 4.0083,
-          "high": 4.375,
+          "mean": 4.0167,
+          "low": 3.8583,
+          "high": 4.1833,
           "n": 240
         },
         "foot": {
-          "mean": 2.8708,
-          "low": 2.6583,
-          "high": 3.1,
+          "mean": 2.5958,
+          "low": 2.4208,
+          "high": 2.775,
           "n": 240
         },
         "finish": {
-          "mean": 1.025,
-          "low": 1.0083,
-          "high": 1.0458,
+          "mean": 1.0333,
+          "low": 1.0125,
+          "high": 1.0583,
           "n": 240
         }
       },
       "diversity": {
-        "mean": 0.9654,
-        "low": 0.9438,
-        "high": 0.9786,
-        "n": 5
+        "mean": 0.9596,
+        "low": 0.9579,
+        "high": 0.9612,
+        "n": 5640
       },
       "novel_fraction": {
         "mean": 1.0,
@@ -208,48 +205,48 @@
     {
       "guidance": 3.5,
       "grade_mae": {
-        "mean": 0.8013,
-        "low": 0.7191,
-        "high": 0.8848,
+        "mean": 0.7798,
+        "low": 0.7044,
+        "high": 0.855,
         "n": 240
       },
       "holds_per_problem": {
-        "mean": 9.775,
-        "low": 9.4208,
-        "high": 10.1667,
+        "mean": 9.1458,
+        "low": 8.8458,
+        "high": 9.45,
         "n": 240
       },
       "roles_per_problem": {
         "start": {
-          "mean": 1.5583,
-          "low": 1.4958,
-          "high": 1.6208,
+          "mean": 1.6125,
+          "low": 1.5417,
+          "high": 1.6833,
           "n": 240
         },
         "hand": {
-          "mean": 4.3542,
-          "low": 4.1458,
-          "high": 4.5833,
+          "mean": 4.0208,
+          "low": 3.8542,
+          "high": 4.1917,
           "n": 240
         },
         "foot": {
-          "mean": 2.8083,
-          "low": 2.5833,
-          "high": 3.0458,
+          "mean": 2.4625,
+          "low": 2.2917,
+          "high": 2.6417,
           "n": 240
         },
         "finish": {
-          "mean": 1.0542,
-          "low": 1.0083,
-          "high": 1.1417,
+          "mean": 1.05,
+          "low": 1.025,
+          "high": 1.0792,
           "n": 240
         }
       },
       "diversity": {
-        "mean": 0.9622,
-        "low": 0.9378,
-        "high": 0.9774,
-        "n": 5
+        "mean": 0.9508,
+        "low": 0.9487,
+        "high": 0.9528,
+        "n": 5640
       },
       "novel_fraction": {
         "mean": 1.0,
@@ -266,22 +263,11 @@
       "samples": 240
     }
   ],
-  "checkpoint": "checkpoints/generator/tb2_12x12.pt",
-  "model_config": {
-    "vocabulary_size": 2182,
-    "max_sequence_length": 40,
-    "num_hold_types": 106,
-    "num_layouts": 2,
-    "width": 192,
-    "heads": 8,
-    "layers": 6,
-    "expansion": 4,
-    "dropout": 0.1
-  },
-  "selected_epoch": 12,
+  "checkpoint": "checkpoints/generator/tb2_12x12.pt (overwritten; not reproducible)",
   "test_metrics": {
-    "nll_per_token": 3.790569047155381,
-    "nll_per_problem": 43.18860940469726,
-    "perplexity": 44.281591421462885
-  }
+    "nll_per_token": 3.4806954191788004,
+    "nll_per_problem": 39.6580022707796,
+    "perplexity": 32.48230303984157
+  },
+  "note": "Pre-improvement model: styles in the conditioning prefix, no physical hold inputs, no mirror augmentation. Its checkpoint was overwritten by the retrain, so this report cannot be regenerated. Diversity intervals here bootstrap pairwise distances as if independent and are too narrow; the later report fixes that."
 }
