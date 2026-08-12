@@ -152,7 +152,12 @@ def select_pretraining_examples(
     ]
 
 
-def _sample_weight(example: RouteExample) -> float:
+def sample_weight(example: RouteExample) -> float:
+    """Confidence in one example, from how many people have climbed it.
+
+    Shared with the generator so both models trust thin evidence to the same degree.
+    """
+
     return min(3.0, 1.0 + math.log1p(example.ascents) / 5.0)
 
 
@@ -177,7 +182,7 @@ def collate_routes(
 
     for row, example in enumerate(batch):
         angles[row] = float(example.angle)
-        weights[row] = _sample_weight(example)
+        weights[row] = sample_weight(example)
         if uncertain_targets and example.ascents < 3:
             evidence_fraction = max(example.ascents, 1) / 3.0
             weights[row] *= evidence_fraction

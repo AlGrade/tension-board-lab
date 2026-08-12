@@ -93,6 +93,37 @@ class GeneratorVocabulary:
     def size(self) -> int:
         return self.hold_offset + len(self.positions) * len(HOLD_ROLES)
 
+    def as_dict(self) -> dict[str, object]:
+        """Everything needed to rebuild this vocabulary without the catalog file."""
+
+        return {
+            "positions": [list(position) for position in self.positions],
+            "layouts": list(self.layouts),
+            "angles": list(self.angles),
+            "grade_labels": list(self.grade_labels),
+            "layout_offset": self.layout_offset,
+            "angle_offset": self.angle_offset,
+            "grade_offset": self.grade_offset,
+            "style_offsets": list(self.style_offsets),
+            "hold_offset": self.hold_offset,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, object]) -> GeneratorVocabulary:
+        positions = tuple((float(x), float(y)) for x, y in raw["positions"])
+        return cls(
+            positions=positions,
+            position_to_index={position: index for index, position in enumerate(positions)},
+            layouts=tuple(str(value) for value in raw["layouts"]),
+            angles=tuple(int(value) for value in raw["angles"]),
+            grade_labels=tuple(str(value) for value in raw["grade_labels"]),
+            layout_offset=int(raw["layout_offset"]),
+            angle_offset=int(raw["angle_offset"]),
+            grade_offset=int(raw["grade_offset"]),
+            style_offsets=tuple(int(value) for value in raw["style_offsets"]),
+            hold_offset=int(raw["hold_offset"]),
+        )
+
     # -- conditioning ------------------------------------------------------------------
 
     def layout_token(self, layout: str) -> int:

@@ -1,0 +1,67 @@
+{
+  "model": "tb2_12x12 boulder generator",
+  "parameters": 3104175,
+  "vocabulary_size": 2223,
+  "max_sequence_length": 47,
+  "selected_epoch": 19,
+  "stopped_epoch": 27,
+  "data": {
+    "pool": 44234,
+    "train": 36169,
+    "validation": 4382,
+    "test": 3683,
+    "excluded_critic_holdout_groups": 3068
+  },
+  "likelihood": {
+    "test_nll_per_token": 3.4807,
+    "test_nll_per_problem": 39.658,
+    "test_perplexity": 32.4823,
+    "uniform_baseline_nll_per_token": 7.7066
+  },
+  "grade_fidelity": {
+    "comment": "Mean absolute error between the requested grade and the critic's expected grade, over 160 samples per guidance scale at 40 degrees on the mirror layout. The critic is the judge, so this measures agreement with the critic, not ground truth.",
+    "by_guidance": [
+      {"guidance": 1.0, "mae_grades": 1.027},
+      {"guidance": 1.5, "mae_grades": 0.829},
+      {"guidance": 2.5, "mae_grades": 0.752}
+    ],
+    "by_grade_at_guidance_1_5": [
+      {"requested": "V2", "mean_critic_grade": 2.38, "mae_grades": 0.578},
+      {"requested": "V4", "mean_critic_grade": 4.59, "mae_grades": 0.982},
+      {"requested": "V6", "mean_critic_grade": 6.26, "mae_grades": 0.914},
+      {"requested": "V8", "mean_critic_grade": 7.94, "mae_grades": 0.744},
+      {"requested": "V10", "mean_critic_grade": 9.82, "mae_grades": 0.821}
+    ]
+  },
+  "novelty": {
+    "comment": "Share of samples whose configuration_signature is absent from all 35,524 corpus signatures.",
+    "novel_fraction": 1.0,
+    "samples": 480
+  },
+  "validity": {
+    "comment": "Share of samples satisfying every hard constraint. Must be 1.0; masking makes violation unreachable rather than unlikely.",
+    "valid_fraction": 1.0,
+    "samples": 480
+  },
+  "distribution_fidelity": {
+    "comment": "Roles per problem against the corpus. Feet and hands are both under-generated; see style_steering.",
+    "generated": {"start": 1.53, "hand": 4.14, "foot": 2.7, "finish": 1.02},
+    "corpus": {"start": 1.54, "hand": 4.52, "foot": 3.35, "finish": 1.06},
+    "generated_holds": {"median": 9, "p95": 13, "max": 21},
+    "corpus_holds": {"median": 10, "p95": 16, "max": 35}
+  },
+  "style_steering": {
+    "comment": "Share of 32 samples matching the preset, conditioned on it versus not, at guidance 2.5 for V5.",
+    "presets": [
+      {"style": "dyno", "conditioned": 0.781, "unconditioned": 0.062},
+      {"style": "power", "conditioned": 0.406, "unconditioned": 0.062},
+      {"style": "endurance", "conditioned": 0.219, "unconditioned": 0.0},
+      {"style": "technical", "conditioned": 0.031, "unconditioned": 0.0}
+    ]
+  },
+  "known_limitations": [
+    "Foot holds are under-generated (2.7 against the corpus 3.35), and problems are shorter than real ones (max 21 holds against 35).",
+    "Technical steering is weak at 3.1%, which follows directly from the foot shortfall: the preset needs a high foot-to-hand ratio.",
+    "Grades regress toward the middle at the extremes: V2 samples average V2.38 and V10 samples average V9.82."
+  ]
+}

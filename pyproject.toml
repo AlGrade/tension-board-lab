@@ -25,12 +25,16 @@ tension-inspect-db = "tension_board_lab.aurora:inspect_main"
 tension-import-aurora = "tension_board_lab.aurora:import_main"
 tension-train-grade = "tension_board_lab.grade.train:main"
 tension-predict = "tension_board_lab.grade.predict:main"
+tension-train-generator = "tension_board_lab.generator.train:main"
+tension-sample = "tension_board_lab.generator.sample:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/ mirrors the package, so basenames repeat across subdirectories.
+addopts = "--import-mode=importlib"
 
 [tool.ruff]
 line-length = 100

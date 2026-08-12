@@ -52,9 +52,10 @@ src/tension_board_lab/
     model.py train.py predict.py            unchanged (grade critic)
   generator/
     tokenizer.py                            done  problem <-> token sequence
-    model.py                                new  decoder-only transformer
-    train.py                                new  tension-train-generator
-    sample.py                               new  tension-sample (offline evaluation)
+    constraints.py                          done  legal-token masks for sampling
+    model.py                                done  decoder-only transformer
+    train.py                                done  tension-train-generator
+    sample.py                               done  tension-sample (offline evaluation)
   export/
     onnx.py                                 new  tension-export-onnx (both models)
     artifacts.py                            new  tension-export-web (catalog, vocabulary, ids)
@@ -187,12 +188,37 @@ problem-to-token-sequence mapping, layout handling, and `(y, x)` ordering. Cover
 [tests/test_style.py](../tests/test_style.py) and
 [tests/generator/test_tokenizer.py](../tests/generator/test_tokenizer.py).
 
-### Step 2: train the generator
+### Step 2: train the generator — done
 
-`generator/model.py` and `generator/train.py` with a `tension-train-generator` CLI, following
-the style of [train.py](../src/tension_board_lab/grade/train.py)—argparse triad, JSON lines on
-stdout, checkpoint dict with `format_version`. Reuse the split and exclusion rules. Add
-`tension-sample` as an offline CLI so results can be judged before the frontend exists.
+[generator/model.py](../src/tension_board_lab/generator/model.py) (3,104,175 parameters),
+[generator/train.py](../src/tension_board_lab/generator/train.py) with `tension-train-generator`,
+[generator/constraints.py](../src/tension_board_lab/generator/constraints.py) for the masking
+rules, and [generator/sample.py](../src/tension_board_lab/generator/sample.py) with
+`tension-sample`. Full results in
+[reports/generator/tb2_12x12.metrics.json](../reports/generator/tb2_12x12.metrics.json).
+
+Trained on the 36,169-problem training split of the leakage-free pool, early-stopped at epoch
+27 with epoch 19 selected. Test negative log-likelihood is 3.481 per token against a uniform
+baseline of 7.707.
+
+| Measure | Result |
+| --- | --- |
+| Grade fidelity (MAE vs. the critic) | 1.027 at guidance 1.0, 0.829 at 1.5, **0.752 at 2.5** |
+| Novelty | **100%** of 480 samples absent from all 35,524 corpus signatures |
+| Validity | **100%**—masking makes a violation unreachable, not merely unlikely |
+| Style steering (dyno) | 6.2% unconditioned to **78.1%** conditioned |
+
+Guidance behaves as intended: raising it trades variety for grade fidelity, monotonically.
+
+**Known limitations, all measured:** feet are under-generated (2.7 per problem against the
+corpus 3.35) and problems run short (max 21 holds against 35). Technical steering is weak at
+3.1% as a direct consequence—that preset needs a high foot-to-hand ratio. Grades regress toward
+the middle at the extremes: V2 requests average V2.38 and V10 requests average V9.82. The foot
+shortfall is the one worth attacking first.
+
+One caveat on grade fidelity: the critic is the judge, so it measures agreement with the
+critic, not ground truth. It is still meaningful, because the generator never saw the critic's
+holdout configurations.
 
 ### Step 3: export
 

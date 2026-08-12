@@ -1,12 +1,15 @@
-# Data pipeline and grade predictor
+# Data pipeline, grade critic, and generator
 
-This package holds two things: the pipeline that turns a local Aurora database into training
-data, and the model that predicts the difficulty of a boulder problem on a **Tension Board 2
-12x12**.
+This package holds three things for the **Tension Board 2 12x12**: the pipeline that turns a
+local Aurora database into training data, the model that predicts how hard a boulder problem
+is, and the model that invents new ones.
 
-Give the model the wall angle and the selected holds. It returns a V grade and its
+Give the **grade critic** the wall angle and the selected holds. It returns a V grade and its
 confidence—for example, `V9` with `38%` confidence. The target is the community's consensus
 grade at that particular angle, not an objective measure of difficulty.
+
+Give the **generator** an angle, a grade, and optionally a style, and it produces problems the
+critic then scores and ranks.
 
 ```mermaid
 flowchart LR
@@ -18,9 +21,8 @@ flowchart LR
 
 ## Modules
 
-Shared modules sit at the top level of the package; the grade critic lives in `grade/`. A
-`generator/` and an `export/` subpackage will join it—see
-[`docs/roadmap.md`](../../docs/roadmap.md).
+Shared modules sit at the top level of the package; each model has its own subpackage. An
+`export/` subpackage will join them—see [`docs/roadmap.md`](../../docs/roadmap.md).
 
 | Module | Purpose |
 | --- | --- |
@@ -34,6 +36,10 @@ Shared modules sit at the top level of the package; the grade critic lives in `g
 | `grade/train.py` | Two-stage training, calibration, and evaluation |
 | `grade/predict.py` | Single-problem inference |
 | `generator/tokenizer.py` | Problem to token sequence for the generator |
+| `generator/constraints.py` | Legal-token masks that keep sampled problems valid |
+| `generator/model.py` | The decoder-only transformer and its loss |
+| `generator/train.py` | Generator training with classifier-free guidance |
+| `generator/sample.py` | Sampling, critic scoring, and candidate ranking |
 
 ## The data
 
@@ -81,7 +87,9 @@ tension-import-aurora data/raw/tension.sqlite3 \
 The two queries differ in one filter only: at least three ascensionists for the consensus set,
 at least one for the pretraining set.
 
-## What the model learns from
+## The grade critic
+
+### What it learns from
 
 Each selected hold becomes one point in a graph. The model receives:
 
@@ -97,7 +105,7 @@ It does **not** receive the layout name, climb name, placement ID, ascent count,
 when making a prediction. Mirror and Spray are both training sources, but the model is not told
 which layout an example came from.
 
-## Architecture
+### Architecture
 
 The model embeds every hold and uses pairwise geometry—such as distance, direction, and
 wall-relative movement—to connect it to every other hold. Six graph-transformer blocks with
@@ -108,7 +116,7 @@ reported confidence.
 
 The canonical model has 2.85 million parameters.
 
-## Training
+### Training
 
 Training happens in two stages. First, the model pretrains on 44,232 leakage-free examples:
 18,045 with one grade, 8,710 with two, and 17,477 consensus training examples. One- and
@@ -122,7 +130,7 @@ tension-train-grade data/processed/tb2_12x12.jsonl \
   --output checkpoints/grade/tb2_12x12.pt
 ```
 
-## Results
+### Results
 
 On the untouched test split of 2,174 examples:
 
@@ -141,7 +149,7 @@ The versioned model specification is in
 [`../../configs/tb2_12x12.json`](../../configs/tb2_12x12.json), and the full evaluation report
 is in [`../../reports/grade/tb2_12x12.metrics.json`](../../reports/grade/tb2_12x12.metrics.json).
 
-## Predicting
+### Predicting
 
 ```bash
 tension-predict checkpoints/grade/tb2_12x12.pt examples/route.json
@@ -152,3 +160,70 @@ tension-predict checkpoints/grade/tb2_12x12.pt examples/route.json
 ```
 
 See [`../../examples/route.json`](../../examples/route.json) for the input format.
+
+## The generator
+
+A decoder-only transformer over token sequences, 3,104,175 parameters. A sequence is
+
+```
+[BOS] layout angle grade style x7 | hold hold ... hold | [EOS]
+```
+
+Within one layout a position identifies exactly one hold, so a hold token carries only
+`(position, role)`—type and orientation come from the catalog. That keeps the vocabulary at
+2,223 tokens and the longest sequence at 47.
+
+Holds are emitted bottom to top, in `(y, x)` order. Problems are sets, not sequences, so the
+order is a convention rather than a climbing sequence; it puts starts early and finishes late.
+
+### Conditioning
+
+The prefix has fixed width, so classifier-free guidance can blank it without shifting the
+holds. Training replaces the whole prefix with `UNCOND` 10% of the time, which gives sampling a
+guidance scale that trades variety for fidelity to the request. Separately, each style feature
+is dropped to its "any" slot 25% of the time, because a preset pins only two or three of the
+seven features.
+
+### Training
+
+The generator trains on problems with at least one ascent, minus every configuration the critic
+holds out—44,234 problems, split 36,169 / 4,382 / 3,683 by the same `split_examples` the critic
+uses. Sharing that function is the point: a copy would eventually drift and quietly invalidate
+every "the generator hits the target grade" number.
+
+```bash
+tension-train-generator data/processed/tb2_12x12_pretrain.jsonl \
+  --consensus-dataset data/processed/tb2_12x12.jsonl \
+  --output checkpoints/generator/tb2_12x12.pt
+```
+
+### Sampling
+
+Hard rules are applied as logit masks during sampling rather than as a filter afterwards, so a
+violation is unreachable instead of merely unlikely: positions off the layout are masked, a
+used position retires all four of its roles, `EOS` stays blocked until the problem has a start
+and a finish, and starts and finishes are held to loose height bounds.
+
+```bash
+tension-sample checkpoints/generator/tb2_12x12.pt \
+  --critic checkpoints/grade/tb2_12x12.pt \
+  --grade V5 --angle 40 --style power
+```
+
+Candidates go through the critic in one batch and are ranked by grade error, style distance,
+and sequence likelihood. The critic's **expectation** is used, not its argmax, which is too
+noisy to rank by at around 38% confidence.
+
+### Results
+
+Test negative log-likelihood is 3.481 per token, against 7.707 for a uniform choice over the
+vocabulary. Over 480 samples: **100% valid**, **100% novel**—no sampled problem reproduced any
+of the 35,524 configurations in the corpus. Grade error against the critic falls from 1.027 to
+0.752 V grades as guidance rises from 1.0 to 2.5, and conditioning on the dyno preset lifts its
+match rate from 6.2% to 78.1%.
+
+Feet are under-generated—2.7 per problem against the corpus 3.35—and problems run short, at
+most 21 holds against the corpus 35. Technical steering is weak at 3.1% for exactly that
+reason: the preset needs a high foot-to-hand ratio. Grade fidelity is agreement with the
+critic, not with ground truth. The full report is in
+[`../../reports/generator/tb2_12x12.metrics.json`](../../reports/generator/tb2_12x12.metrics.json).

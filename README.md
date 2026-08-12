@@ -9,7 +9,7 @@ which ones belong to a problem.
 | Part | Status | Documentation |
 | --- | --- | --- |
 | Data pipeline and grade predictor | Working | [`src/tension_board_lab/`](src/tension_board_lab/README.md) |
-| Boulder problem generator | Planned | [`docs/roadmap.md`](docs/roadmap.md) |
+| Boulder problem generator | Working | [`src/tension_board_lab/`](src/tension_board_lab/README.md) |
 | Web application | Planned | [`docs/roadmap.md`](docs/roadmap.md) |
 
 The **grade predictor** takes a wall angle and a set of selected holds and returns a V grade
@@ -18,10 +18,12 @@ it reaches a mean absolute error of 0.935 V grades, with 77.97% of predictions w
 grade. See [`src/tension_board_lab/`](src/tension_board_lab/README.md) for the architecture, the
 training procedure, and how to rebuild the datasets.
 
-The **generator** will propose new problems for a requested grade, angle, and style, using the
-grade predictor as an independent critic. The **web application** will run both models in the
-browser. Neither exists yet; [`docs/roadmap.md`](docs/roadmap.md) describes the design and the
-steps to get there.
+The **generator** proposes new problems for a requested grade, angle, and style, using the grade
+predictor as an independent critic. Every sampled problem is valid by construction, and none of
+480 evaluated samples reproduced a problem from the corpus.
+
+The **web application** will run both models in the browser; it does not exist yet.
+[`docs/roadmap.md`](docs/roadmap.md) describes the design and the remaining steps.
 
 ## Setup
 
