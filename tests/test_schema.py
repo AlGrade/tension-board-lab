@@ -1,6 +1,6 @@
 import pytest
 
-from tension_grade.schema import RouteExample
+from tension_board_lab.schema import RouteExample
 
 
 def route_data() -> dict:

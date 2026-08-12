@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tension-grade-predictor"
+name = "tension-board-lab"
 version = "0.1.0"
-description = "Essential-input graph transformer for Tension Board 2 grade prediction"
+description = "Models and tools for Tension Board 2 boulder problems: grade prediction and problem generation"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -21,10 +21,10 @@ dev = [
 ]
 
 [project.scripts]
-tension-inspect-db = "tension_grade.aurora:inspect_main"
-tension-import-aurora = "tension_grade.aurora:import_main"
-tension-train = "tension_grade.train:main"
-tension-predict = "tension_grade.predict:main"
+tension-inspect-db = "tension_board_lab.aurora:inspect_main"
+tension-import-aurora = "tension_board_lab.aurora:import_main"
+tension-train-grade = "tension_board_lab.grade.train:main"
+tension-predict = "tension_board_lab.grade.predict:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

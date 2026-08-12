@@ -1,6 +1,6 @@
 import torch
 
-from tension_grade.model import ModelConfig, TensionGradeTransformer, grade_loss
+from tension_board_lab.grade.model import ModelConfig, TensionGradeTransformer, grade_loss
 
 
 def test_model_output_and_loss() -> None:

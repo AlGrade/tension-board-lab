@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-from .data import (
+from ..data import (
     RouteDataset,
     Vocabulary,
     collate_routes,
@@ -22,8 +22,8 @@ from .data import (
     select_pretraining_examples,
     split_examples,
 )
+from ..schema import RouteExample, load_jsonl
 from .model import ModelConfig, TensionGradeTransformer, grade_loss, probabilities
-from .schema import RouteExample, load_jsonl
 
 
 def select_device(requested: str) -> torch.device:
@@ -131,7 +131,7 @@ def train_epoch(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset", type=Path, help="Canonical JSONL dataset")
-    parser.add_argument("--output", type=Path, default=Path("checkpoints/tb2_12x12.pt"))
+    parser.add_argument("--output", type=Path, default=Path("checkpoints/grade/tb2_12x12.pt"))
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=3e-4)

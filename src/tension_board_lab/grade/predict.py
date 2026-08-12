@@ -8,9 +8,9 @@ from pathlib import Path
 
 import torch
 
-from .data import Vocabulary, collate_routes
+from ..data import Vocabulary, collate_routes
+from ..schema import RouteExample
 from .model import ModelConfig, TensionGradeTransformer, probabilities
-from .schema import RouteExample
 from .train import forward_batch, move_batch, select_device
 
 

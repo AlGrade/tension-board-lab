@@ -21,3 +21,8 @@ data/processed/*
 checkpoints/*
 !checkpoints/.gitkeep
 *.env
+
+# Web application: dependencies, build output, and exported model artifacts.
+web/node_modules/
+web/dist/
+web/public/models/

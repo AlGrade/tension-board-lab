@@ -1,6 +1,6 @@
 import pytest
 
-from tension_grade.aurora import _continuous_v_grade
+from tension_board_lab.aurora import _continuous_v_grade
 
 
 def test_aurora_difficulty_is_interpolated_on_v_grade_axis() -> None:

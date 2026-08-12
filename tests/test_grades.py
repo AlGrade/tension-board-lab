@@ -1,6 +1,6 @@
 import pytest
 
-from tension_grade.grades import normalize_v_grade, v_grade_index
+from tension_board_lab.grades import normalize_v_grade, v_grade_index
 
 
 @pytest.mark.parametrize(

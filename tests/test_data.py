@@ -1,12 +1,12 @@
 import pytest
 
-from tension_grade.data import (
+from tension_board_lab.data import (
     Vocabulary,
     collate_routes,
     select_pretraining_examples,
     split_examples,
 )
-from tension_grade.schema import HoldNode, RouteExample
+from tension_board_lab.schema import HoldNode, RouteExample
 
 
 def example(
