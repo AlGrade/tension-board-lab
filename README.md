@@ -1,67 +1,29 @@
-# Tension Grade Predictor
+# Tension Board Lab
 
-This project predicts the difficulty of a boulder problem on a **Tension Board 2
-12x12**. A Tension Board is a standardized indoor climbing wall: the holds stay in
-fixed positions, but climbers choose which ones belong to a problem.
+Models and tools for boulder problems on a **Tension Board 2 12x12**. A Tension Board is a
+standardized indoor climbing wall: the holds stay in fixed positions, but climbers choose
+which ones belong to a problem.
 
-Give the model the wall angle and the selected holds. It returns a V grade and its
-confidence—for example, `V8` with `51%` confidence. The target is the community's
-consensus grade at that particular angle, not an objective measure of difficulty.
+## Parts
 
-```mermaid
-flowchart LR
-    A["Wall angle<br/>e.g. 45°"] --> C
-    B["Selected holds<br/>type · rotation · position · role"] --> C["Graph Transformer"]
-    C --> D["Predicted grade"]
-    C --> E["Confidence"]
-```
+| Part | Status | Documentation |
+| --- | --- | --- |
+| Data pipeline and grade predictor | Working | [`src/tension_board_lab/`](src/tension_board_lab/README.md) |
+| Boulder problem generator | Planned | [`docs/roadmap.md`](docs/roadmap.md) |
+| Web application | Planned | [`docs/roadmap.md`](docs/roadmap.md) |
 
-## What the model learns from
+The **grade predictor** takes a wall angle and a set of selected holds and returns a V grade
+with a confidence—for example, `V9` with `38%`. On its untouched test split of 2,174 examples
+it reaches a mean absolute error of 0.935 V grades, with 77.97% of predictions within one V
+grade. See [`src/tension_board_lab/`](src/tension_board_lab/README.md) for the architecture, the
+training procedure, and how to rebuild the datasets.
 
-Each selected hold becomes one point in a graph. The model receives:
+The **generator** will propose new problems for a requested grade, angle, and style, using the
+grade predictor as an independent critic. The **web application** will run both models in the
+browser. Neither exists yet; [`docs/roadmap.md`](docs/roadmap.md) describes the design and the
+steps to get there.
 
-- the hold type;
-- its rotation and X/Y position;
-- its role: start, hand, foot, or finish;
-- the wall angle as a continuous numeric input.
-
-The hold-type token includes its material prefix—for example, `wood:SHLP` or
-`plastic:12`. Material is not provided as an additional, separate feature.
-
-It does **not** receive the layout name, climb name, placement ID, ascent count, or
-known grade when making a prediction. Mirror and Spray are both training sources,
-but the model is not told which layout an example came from.
-
-The consensus dataset contains 21,809 `(climb, angle)` examples with at least three
-ascensionists from the Mirror and Spray layouts at 35°, 40°, 45°, 50°, and 55°.
-Input-equivalent, renamed, and mirrored climbs remain in one data split.
-
-Training happens in two stages. First, the model pretrains on 44,232 leakage-free
-examples: 18,045 with one grade, 8,710 with two, and 17,477 consensus training
-examples. One- and two-ascent grades receive lower weights and wider soft targets.
-Every validation/test configuration—and all its angles—is excluded from pretraining.
-The model is then fine-tuned only on the 17,477 consensus training examples.
-
-## Machine learning approach
-
-The model embeds every hold and uses pairwise geometry—such as distance, direction,
-and wall-relative movement—to connect it to every other hold. Six graph-transformer
-blocks with eight attention heads learn which holds and possible moves matter. An
-ordinal-aware classifier then produces probabilities for `V0` through `V14`; those
-probabilities are trained against Aurora's unrounded community average. Validation
-temperature calibration turns them into the reported confidence.
-
-The canonical model has 2.85 million parameters. On the untouched test split of
-2,174 examples it achieves:
-
-- **0.935 V grades** mean absolute error;
-- **77.97%** of predictions within one V grade;
-- **34.82%** exact-grade accuracy.
-
-Grades are subjective, so confidence means model confidence—not certainty that every
-climber will experience the problem the same way.
-
-## Use it
+## Setup
 
 Python 3.10 or newer is required.
 
@@ -69,47 +31,48 @@ Python 3.10 or newer is required.
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[data,dev]"
-
-tension-predict checkpoints/tb2_12x12.pt examples/route.json
 ```
 
-Example output:
-
-```json
-{"predicted_grade":"V9","confidence":0.3832}
-```
-
-Copy [`examples/route.json`](examples/route.json) and replace its angle and holds to
-make a prediction. Coordinates are normalized to the board; rotations are degrees.
-
-## Rebuild the data and model
-
-Place the local Aurora database at `data/raw/tension.sqlite3`, then run:
+Predict the grade of a problem:
 
 ```bash
-tension-import-aurora data/raw/tension.sqlite3 \
-  --query configs/aurora_tb2_12x12.sql \
-  --catalog configs/tb2_12x12_hold_catalog.csv \
-  --output data/processed/tb2_12x12.jsonl
-
-tension-import-aurora data/raw/tension.sqlite3 \
-  --query configs/aurora_tb2_12x12_pretrain.sql \
-  --catalog configs/tb2_12x12_hold_catalog.csv \
-  --output data/processed/tb2_12x12_pretrain.jsonl
-
-tension-train data/processed/tb2_12x12.jsonl \
-  --pretrain-dataset data/processed/tb2_12x12_pretrain.jsonl \
-  --output checkpoints/tb2_12x12.pt
+tension-predict checkpoints/grade/tb2_12x12.pt examples/route.json
 ```
 
-The database, generated datasets, and trained checkpoint are intentionally ignored by
-Git. The versioned model specification is in
-[`configs/tb2_12x12.json`](configs/tb2_12x12.json), and the full evaluation report is
-in [`reports/tb2_12x12.metrics.json`](reports/tb2_12x12.metrics.json).
+```json
+{"predicted_grade": "V9", "confidence": 0.3832}
+```
 
-Run the checks with:
+Copy [`examples/route.json`](examples/route.json) and replace its angle and holds to make your
+own prediction. Coordinates are normalized to the board; rotations are degrees.
+
+## Checks
 
 ```bash
 pytest
 ruff check .
 ```
+
+Both commands expect the repository root as the working directory.
+
+## Repository layout
+
+```
+configs/               board layout catalog, Aurora SQL queries, model specification
+data/                  local databases and generated datasets (git-ignored)
+docs/                  design notes and the roadmap
+checkpoints/<model>/   trained models (git-ignored)
+reports/<model>/       evaluation reports
+examples/              example input for tension-predict
+src/tension_board_lab/ the Python package
+tests/                 test suite, mirroring the package
+```
+
+Inside the package, the modules every model needs—the problem schema, the grade axis, the
+Aurora import, and the batching and split logic—sit at the top level. Each model gets its own
+subpackage below them: [`grade/`](src/tension_board_lab/grade/) today, `generator/` and
+`export/` when they arrive. `checkpoints/` and `reports/` are split by model the same way, so
+two models never contend for one filename.
+
+Board databases, generated datasets, and trained checkpoints are intentionally kept out of
+Git—the databases may contain account-derived or licensed data.
