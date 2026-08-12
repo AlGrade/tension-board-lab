@@ -46,10 +46,6 @@ h1 {
   color: var(--muted);
 }
 
-.small {
-  font-size: 0.85rem;
-}
-
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;
@@ -70,43 +66,31 @@ h1 {
   display: block;
 }
 
-.board-face {
-  fill: var(--face);
-  stroke: var(--line);
-}
-
-.hold {
-  fill: var(--hold);
+.hold-target {
+  fill: transparent;
   cursor: pointer;
-  transition: r 120ms ease;
 }
 
-.hold:hover {
-  r: 10;
+.hold-target:hover {
+  fill: rgba(255, 255, 255, 0.22);
 }
 
-.hold-selected {
-  stroke: var(--page);
-  stroke-width: 2;
+.hold-halo {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.6);
 }
 
 .hold-ring {
   fill: none;
-  stroke-width: 3;
-  opacity: 0.55;
-}
-
-.legend,
-.controls label {
-  display: flex;
-  gap: 0.75rem;
 }
 
 .legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   list-style: none;
   padding: 0;
   margin: 1rem 0 0;
-  flex-wrap: wrap;
   color: var(--muted);
   font-size: 0.9rem;
 }
@@ -130,6 +114,7 @@ h1 {
 }
 
 .controls label {
+  display: flex;
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.9rem;
@@ -143,45 +128,6 @@ h1 {
   background: var(--page);
   color: var(--ink);
   font: inherit;
-}
-
-.readout {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 0.9rem 1rem;
-}
-
-.readout h2 {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  margin: 0 0 0.5rem;
-}
-
-.grade {
-  font-size: 2.4rem;
-  font-weight: 650;
-  margin: 0;
-  line-height: 1;
-}
-
-.readout dl {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.2rem 1rem;
-  margin: 0;
-  font-size: 0.9rem;
-}
-
-.readout dt {
-  color: var(--muted);
-}
-
-.readout dd {
-  margin: 0;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .error {

@@ -1,17 +1,15 @@
 /**
  * Ask for a grade, an angle, and a style; get a problem you can then edit.
  *
- * The generator is loaded on first use rather than at startup. It is a separate 3.7 MB on top
- * of the critic, and someone who only wants to grade a problem they built should not pay for
- * it.
+ * The critic still runs — it is what ranks the candidates — but nothing about it is shown.
+ * The generator loads on first use rather than at startup; it is a separate 3.7 MB.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { BoardView, RoleLegend } from "./board/BoardView";
+import { BoardView, RoleLegend, type CalibrationMap } from "./board/BoardView";
 import { BoulderGenerator, rankCandidates, type RankedCandidate } from "./generate/sample";
-import { Critic, type Prediction } from "./model/critic";
-import { computeStyleFeatures } from "./style";
+import { Critic } from "./model/critic";
 import {
   HOLD_ROLES,
   type BoardArtifact,
@@ -36,13 +34,16 @@ function nextRole(current: HoldRole | undefined): HoldRole | undefined {
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
-    throw new Error(`${path} returned ${response.status}. Run tension-export-web first.`);
+    // Everything under /data and /models is produced by the export; /board is committed.
+    const hint = path.startsWith("/board/") ? "" : " Run tension-export-web first.";
+    throw new Error(`${path} returned ${response.status}.${hint}`);
   }
   return (await response.json()) as T;
 }
 
 export default function App() {
   const [board, setBoard] = useState<BoardArtifact>();
+  const [calibration, setCalibration] = useState<CalibrationMap>();
   const [style, setStyle] = useState<StyleArtifact>();
   const [critic, setCritic] = useState<Critic>();
   const [error, setError] = useState<string>();
@@ -53,7 +54,6 @@ export default function App() {
   const [preset, setPreset] = useState<string>("");
 
   const [holds, setHolds] = useState<Hold[]>([]);
-  const [prediction, setPrediction] = useState<Prediction>();
   const [candidates, setCandidates] = useState<RankedCandidate[]>([]);
   const [shown, setShown] = useState(0);
   const [generating, setGenerating] = useState(false);
@@ -64,13 +64,15 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [boardData, styleData, criticData] = await Promise.all([
+        const [boardData, styleData, criticData, calibrationData] = await Promise.all([
           fetchJson<BoardArtifact>("/data/board.json"),
           fetchJson<StyleArtifact>("/data/style.json"),
           fetchJson<CriticArtifact>("/data/critic.json"),
+          fetchJson<CalibrationMap>("/board/calibration.json"),
         ]);
         setBoard(boardData);
         setStyle(styleData);
+        setCalibration(calibrationData);
         setCritic(await Critic.load("/models/grade.int8.onnx", criticData));
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -106,23 +108,6 @@ export default function App() {
       return current.map((hold, position) => (position === index ? { ...hold, role } : hold));
     });
   }, []);
-
-  useEffect(() => {
-    if (!critic || holds.length < 2) {
-      setPrediction(undefined);
-      return;
-    }
-    let cancelled = false;
-    critic
-      .predict([{ angle, layout, holds }])
-      .then(([result]) => {
-        if (!cancelled) setPrediction(result);
-      })
-      .catch((cause: unknown) => setError(String(cause)));
-    return () => {
-      cancelled = true;
-    };
-  }, [critic, holds, angle, layout]);
 
   const generate = useCallback(async () => {
     if (!critic || !board || !style) return;
@@ -172,15 +157,6 @@ export default function App() {
     setHolds(candidates[next].problem.holds);
   }, [candidates, shown]);
 
-  const features = useMemo(() => {
-    if (holds.length === 0) return undefined;
-    try {
-      return computeStyleFeatures(holds);
-    } catch {
-      return undefined;
-    }
-  }, [holds]);
-
   if (error) {
     return (
       <main className="app">
@@ -194,7 +170,7 @@ export default function App() {
     );
   }
 
-  if (!board || !style) {
+  if (!board || !style || !calibration) {
     return (
       <main className="app">
         <h1>Tension Board Lab</h1>
@@ -209,15 +185,18 @@ export default function App() {
     <main className="app">
       <header>
         <h1>Tension Board Lab</h1>
-        <p className="subtitle">
-          Ask for a grade and a style, or build a problem yourself. Either way the critic
-          grades what is on the board.
-        </p>
+        <p className="subtitle">Ask for a grade and a style, or build a problem yourself.</p>
       </header>
 
       <div className="layout">
-        <section className="board-panel">
-          <BoardView board={board} layout={layout} holds={holds} onToggle={toggle} />
+        <section>
+          <BoardView
+            board={board}
+            calibration={calibration}
+            layout={layout}
+            holds={holds}
+            onToggle={toggle}
+          />
           <RoleLegend board={board} />
         </section>
 
@@ -285,48 +264,6 @@ export default function App() {
             </button>
           </div>
 
-          {candidates.length > 0 ? (
-            <p className="muted small">
-              Showing {shown + 1} of {candidates.length}, ranked by grade fit, style, and
-              plausibility.
-            </p>
-          ) : null}
-
-          <div className="readout">
-            <h2>Grade</h2>
-            {holds.length < 2 ? (
-              <p className="muted">Generate a problem, or select at least two holds.</p>
-            ) : prediction ? (
-              <>
-                <p className="grade">{prediction.grade}</p>
-                <p className="muted">{(prediction.confidence * 100).toFixed(1)}% confidence</p>
-                <p className="muted">Expected V{prediction.expectedGrade.toFixed(2)}</p>
-              </>
-            ) : (
-              <p className="muted">Scoring…</p>
-            )}
-          </div>
-
-          {features ? (
-            <div className="readout">
-              <h2>Style</h2>
-              <dl>
-                <dt>Hands</dt>
-                <dd>{features.handCount}</dd>
-                <dt>Feet</dt>
-                <dd>{features.footCount}</dd>
-                <dt>Mean move</dt>
-                <dd>{features.meanMoveLength.toFixed(3)}</dd>
-                <dt>Longest move</dt>
-                <dd>{features.maxMoveLength.toFixed(3)}</dd>
-              </dl>
-            </div>
-          ) : null}
-
-          <p className="muted small">
-            Grades are subjective; confidence is the model&rsquo;s, not a promise. Both models
-            thin out above V11 and at 55°, and endurance problems are rare on this board.
-          </p>
         </aside>
       </div>
     </main>

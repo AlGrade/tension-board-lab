@@ -84,7 +84,13 @@ the first paint cheap.
 
 ## Rendering
 
+The board is a photograph of the real wall, with a coloured ring per selected hold. Rings
+rather than filled dots, because a dot hides the hold it is marking — which would defeat the
+point of using a photo. Unselected positions are invisible click targets.
+
 Positions arrive normalized to `[0, 1]` with y measured upwards from the bottom of the wall;
-SVG measures y downwards, so `BoardView` flips it once and nothing else does. Role colors come
-from `board.json` and match Aurora's, so the board looks like the app climbers already use.
-`board.json` also carries the raw coordinates, which Web Bluetooth needs later.
+SVG measures y downwards, so `BoardView` flips it once and nothing else does. Where those
+coordinates land inside each photo comes from `public/board/calibration.json`, which was fitted
+against the hold lattice — see [`docs/board-images.md`](../docs/board-images.md). Role colors
+come from `board.json` and match Aurora's, so the board looks like the app climbers already
+use. `board.json` also carries the raw coordinates, which Web Bluetooth needs later.
