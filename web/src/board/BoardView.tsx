@@ -43,7 +43,7 @@ export function BoardView({ board, calibration, layout, holds, onToggle }: Board
   );
 
   if (!photo) {
-    return <p className="muted">No board image for the {layout} layout.</p>;
+    return <p className="footnote">No board image for the {layout} layout.</p>;
   }
 
   const { width, height } = photo;
@@ -113,19 +113,5 @@ export function BoardView({ board, calibration, layout, holds, onToggle }: Board
         );
       })}
     </svg>
-  );
-}
-
-export function RoleLegend({ board }: { board: BoardArtifact }) {
-  const roles: HoldRole[] = ["start", "hand", "foot", "finish"];
-  return (
-    <ul className="legend">
-      {roles.map((role) => (
-        <li key={role}>
-          <span className="swatch" style={{ background: `#${board.role_colors[role]}` }} />
-          {role}
-        </li>
-      ))}
-    </ul>
   );
 }
