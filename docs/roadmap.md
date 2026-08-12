@@ -255,13 +255,18 @@ Coordinate inversion for rendering and Bluetooth, since normalization lives only
 `raw_x = x * 128 - 64` and `raw_y = y * 136 + 4`. Emitted in `board.json` so the web side never
 recomputes it.
 
-### Step 4: React app
+### Step 4: React app — done
 
-Vite, React, and TypeScript under `web/`. An SVG board renderer driven by the catalog JSON,
-with Aurora's role colors: `00DD00` start, `0066FF` hand, `FF0000` finish, `FF00FF` foot. The
-featurization in `web/src/model/` is an exact mirror of `collate_routes`.
+Vite, React, and TypeScript under [web/](../web/README.md). An SVG board renderer driven by
+`board.json` with Aurora's role colors, `style.ts` as a mirror of `style.py`, and the
+featurization in `web/src/model/` as an exact mirror of `collate_routes`.
 
-Details where a deviation silently produces wrong predictions:
+Driven in a real browser: 498 holds render, selecting a start, two hands, a foot, and a finish
+scores V12 at 51.1% confidence, editing the problem re-scores it, and switching 40° to 55°
+moves it to V13—steeper reading harder, as it should.
+
+Every deviation below produces a confident wrong grade rather than an error, so each one is
+covered by a test against fixtures recorded from PyTorch:
 
 - orientation is `[sin, cos]`, **in that order**
   ([data.py:195](../src/tension_board_lab/data.py#L195));
@@ -270,7 +275,17 @@ Details where a deviation silently produces wrong predictions:
 - unknown hold types silently become index 0
   ([data.py:193](../src/tension_board_lab/data.py#L193));
 - role order is `start=0, hand=1, foot=2, finish=3`;
+- holds keep the order they were given;
 - confidence is `softmax(logits / 1.67)`.
+
+`test/critic.test.ts` goes further than tensor comparison: it runs the exported graph through
+onnxruntime and checks the resulting probabilities against PyTorch's, including that
+`examples/route.json` still reads V9 at 0.3832 in JavaScript.
+
+**Download budget, corrected.** The int8 graphs total 6.79 MB, but onnxruntime-web's wasm
+runtime is another **6.4 MB gzipped** on top—this plan only ever counted the models. Loading
+the generator lazily, when someone first asks for a problem, keeps the initial load to the
+critic alone.
 
 ### Step 5: sampling UI
 

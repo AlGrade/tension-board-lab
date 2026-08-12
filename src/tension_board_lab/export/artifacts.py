@@ -32,7 +32,14 @@ from ..generator.tokenizer import (
 from ..grade.model import ModelConfig, TensionGradeTransformer
 from ..grade.train import forward_batch
 from ..schema import HOLD_ROLES, RouteExample, load_jsonl
-from ..style import BUCKET_EDGES, FEATURE_NAMES, FEATURE_SCALES, PRESETS
+from ..style import (
+    BUCKET_EDGES,
+    FEATURE_NAMES,
+    FEATURE_SCALES,
+    PRESETS,
+    compute_style_features,
+    style_buckets,
+)
 
 # Aurora's role colours, so the rendered board matches the app climbers already use.
 ROLE_COLORS = {"start": "00DD00", "hand": "0066FF", "finish": "FF0000", "foot": "FF00FF"}
@@ -153,6 +160,16 @@ def parity_fixtures(
                     "angles": [batch["angles"][0].item()],
                 },
                 "logits": [round(value, 6) for value in logits[0].tolist()],
+                # style.ts is a hand-written mirror of style.py; these are what it must
+                # reproduce for this exact problem.
+                "style": {
+                    "features": compute_style_features(example).as_dict(),
+                    "buckets": list(style_buckets(compute_style_features(example))),
+                    "preset_distances": {
+                        name: preset.distance(compute_style_features(example))
+                        for name, preset in PRESETS.items()
+                    },
+                },
             }
         )
     return fixtures
