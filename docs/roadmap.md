@@ -290,8 +290,10 @@ critic alone.
 ### Step 5: sampling UI — done
 
 Inputs for grade, angle, style, and layout; a generate action; the result with its grade and
-confidence; a *next suggestion* button; and an editor that toggles individual holds with live
-re-scoring by the critic.
+confidence; and an editor that toggles individual holds with live re-scoring by the critic.
+
+The plan's *next suggestion* button was built and then dropped as clutter: twelve candidates
+are still sampled and ranked, but only the best one reaches the board.
 
 The sampling loop is a mirror of [sample.py](../src/tension_board_lab/generator/sample.py),
 with the conditional and unconditional rows batched together so guidance costs one model call

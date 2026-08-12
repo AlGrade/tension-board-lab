@@ -21,7 +21,6 @@
   --radius: 14px;
   --radius-lg: 20px;
   --shadow-1: 0 1px 2px rgb(16 18 22 / 6%), 0 4px 12px rgb(16 18 22 / 4%);
-  --shadow-2: 0 2px 6px rgb(16 18 22 / 8%), 0 16px 40px rgb(16 18 22 / 8%);
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -40,7 +39,6 @@
     --focus: #7aa2ff;
 
     --shadow-1: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 14px rgb(0 0 0 / 30%);
-    --shadow-2: 0 2px 8px rgb(0 0 0 / 50%), 0 20px 48px rgb(0 0 0 / 45%);
   }
 }
 
@@ -421,17 +419,6 @@ select {
 
 .btn-primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 88%, var(--focus));
-}
-
-.btn-ghost {
-  background: transparent;
-  border-color: var(--line);
-  color: var(--ink);
-}
-
-.btn-ghost:hover:not(:disabled) {
-  background: var(--surface-2);
-  border-color: var(--line-strong);
 }
 
 .btn:disabled {

@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BoardView, type CalibrationMap } from "./board/BoardView";
-import { BoulderGenerator, rankCandidates, type RankedCandidate } from "./generate/sample";
+import { BoulderGenerator, rankCandidates } from "./generate/sample";
 import { Critic, type Prediction } from "./model/critic";
 import {
   HOLD_ROLES,
@@ -56,8 +56,6 @@ export default function App() {
   const [holds, setHolds] = useState<Hold[]>([]);
   const [prediction, setPrediction] = useState<Prediction>();
   const [scoring, setScoring] = useState(false);
-  const [candidates, setCandidates] = useState<RankedCandidate[]>([]);
-  const [shown, setShown] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState<string>();
 
@@ -83,10 +81,7 @@ export default function App() {
   }, []);
 
   // Positions differ between layouts, so a selection cannot survive the switch.
-  useEffect(() => {
-    setHolds([]);
-    setCandidates([]);
-  }, [layout]);
+  useEffect(() => setHolds([]), [layout]);
 
   const toggle = useCallback((placement: Placement) => {
     setHolds((current) => {
@@ -158,13 +153,12 @@ export default function App() {
       });
       setStatus("Ranking");
       const scored = await critic.predict(sampled.map((candidate) => candidate.problem));
+      // Twelve are sampled and ranked; the best one goes on the board.
       const ranked = rankCandidates(sampled, scored, {
         targetIndex: critic.gradeIndex(targetGrade),
         preset: preset || undefined,
         style,
       });
-      setCandidates(ranked);
-      setShown(0);
       setHolds(ranked[0].problem.holds);
       setStatus(undefined);
     } catch (cause) {
@@ -173,13 +167,6 @@ export default function App() {
       setGenerating(false);
     }
   }, [critic, board, style, layout, angle, targetGrade, preset]);
-
-  const showNext = useCallback(() => {
-    if (candidates.length === 0) return;
-    const next = (shown + 1) % candidates.length;
-    setShown(next);
-    setHolds(candidates[next].problem.holds);
-  }, [candidates, shown]);
 
   if (error) {
     return (
@@ -369,16 +356,6 @@ export default function App() {
                 ) : (
                   "Generate a problem"
                 )}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={showNext}
-                disabled={candidates.length === 0 || generating}
-              >
-                {candidates.length > 0
-                  ? `Next suggestion · ${shown + 1}/${candidates.length}`
-                  : "Next suggestion"}
               </button>
             </div>
           </div>

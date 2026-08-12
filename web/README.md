@@ -4,8 +4,8 @@ A React app that runs both models in the browser. No backend: the ONNX graphs an
 supporting JSON are static files.
 
 Ask for a grade, an angle, and a style and it samples twelve candidates, scores them with the
-critic, and shows them ranked. Or build a problem by clicking holds and it grades that. Either
-way you can edit what is on the board and watch the grade move.
+critic, and puts the best one on the board. Or build a problem by clicking holds and it grades
+that. Either way you can edit what is on the board and watch the grade move.
 
 The generator is loaded on first use rather than at startup: it is a separate 3.7 MB, and
 someone who only wants to grade a problem they built should not pay for it.
