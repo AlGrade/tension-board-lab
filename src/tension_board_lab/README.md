@@ -28,9 +28,12 @@ Shared modules sit at the top level of the package; the grade critic lives in `g
 | `grades.py` | V-grade parsing and the ordinal grade axis |
 | `aurora.py` | Import from the Aurora SQLite database into JSONL |
 | `data.py` | Vocabulary, batching, and the split logic |
+| `catalog.py` | The board's fixed placements; resolves a position to a hold |
+| `style.py` | Rule-based style features, buckets, and presets |
 | `grade/model.py` | The geometry-biased graph transformer and its loss |
 | `grade/train.py` | Two-stage training, calibration, and evaluation |
 | `grade/predict.py` | Single-problem inference |
+| `generator/tokenizer.py` | Problem to token sequence for the generator |
 
 ## The data
 

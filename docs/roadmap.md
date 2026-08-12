@@ -46,11 +46,12 @@ Shared code sits at the top level of the package, and each model gets a subpacka
 ```
 src/tension_board_lab/
   schema.py grades.py aurora.py data.py     unchanged, shared by both models
-  style.py                                  new  rule-based style features (shared)
+  catalog.py                                done  board placements, position -> hold lookup
+  style.py                                  done  rule-based style features (shared)
   grade/
     model.py train.py predict.py            unchanged (grade critic)
   generator/
-    tokenizer.py                            new  problem <-> token sequence
+    tokenizer.py                            done  problem <-> token sequence
     model.py                                new  decoder-only transformer
     train.py                                new  tension-train-generator
     sample.py                               new  tension-sample (offline evaluation)
@@ -81,15 +82,21 @@ exists per position, and wood and plastic never collide—498 positions per layo
 coordinates across both. Hold type and orientation therefore follow deterministically from the
 position via a catalog lookup. The generator only picks `(position, role)`.
 
-- **Vocabulary:** 537 coordinates x 4 roles = 2,148 hold tokens, plus `BOS`, `EOS`, `PAD`, and
-  `UNCOND`—about 2,152 in total.
+- **Vocabulary:** 537 coordinates x 4 roles = 2,148 hold tokens, plus 4 special tokens and 71
+  conditioning tokens—**2,223** in total. Implemented in
+  [generator/tokenizer.py](../src/tension_board_lab/generator/tokenizer.py).
 - **Order:** problems are sets, not sequences. Sort deterministically by ascending `(y, x)`.
   That is physically sensible—bottom to top—and makes starts early tokens and finishes late
   ones.
-- **Sequence length:** 35 holds at most in the dataset, plus the conditioning prefix and
-  BOS/EOS, so 48.
-- **Conditioning prefix:** `[layout][angle_bucket][grade_bucket][style_bucket...]` as tokens
-  before the first hold.
+- **Conditioning prefix:** `[layout][angle][grade][style x7]`, a fixed 10 tokens before the
+  first hold. Angle and grade get one token per value rather than a bucket range, so both
+  survive a round trip exactly.
+- **Unspecified style:** each style feature has one slot past its buckets meaning *any*. A
+  preset pins only two or three of the seven features, and inventing values for the rest would
+  over-constrain sampling. Training drops individual buckets at random so the model sees
+  partial style requests.
+- **Sequence length:** 35 holds at most in the dataset, plus the 10-token prefix and BOS/EOS,
+  so 47.
 
 ### Architecture
 
@@ -147,12 +154,18 @@ The per-problem feature vector is purely geometric, computable from `(x, y, role
 
 Presets are ranges over those features:
 
-| Style | Definition |
-| --- | --- |
-| power | at most 4 hand holds, high mean and maximum move length |
-| endurance | at least 8 hand holds, short moves, high y coverage |
-| dyno | high maximum single move length, otherwise normal hold count |
-| technical | high foot density relative to hand holds, short moves |
+Thresholds are training-split percentiles: *high* is p70 or above, *short* is p30 or below, and
+dyno's cutoff is p90. The last column is the share of the 17,477 training problems that match.
+
+| Style | Definition | Corpus |
+| --- | --- | --- |
+| power | at most 4 hand holds, high mean and maximum move length | 12.1% |
+| endurance | at least 8 hand holds, short moves, high y coverage | 1.3% |
+| dyno | high maximum single move length, otherwise normal hold count | 7.2% |
+| technical | high foot density relative to hand holds, short moves | 12.1% |
+
+Endurance is rare because hand counts above 6 are rare on this board—p90 is 6 hand holds. The
+UI should treat an endurance request the same way it treats V13: honestly.
 
 The same code serves both uses: at training time the features are part of the conditioning
 prefix (discretized into buckets), computable for every training example and therefore free of
@@ -164,12 +177,15 @@ Crimpy, slopey, and pinchy stay inexpressible—those would need a hand-annotate
 
 ## Steps
 
-### Step 1: style features and tokenizer
+### Step 1: style features and tokenizer — done
 
-`style.py` with the feature computation and the presets; `generator/tokenizer.py` with the
-problem-to-token-sequence mapping, including layout handling and `(y, x)` ordering. Tests: a
-lossless roundtrip (problem to tokens to problem is identical) and style features against
-hand-computed examples.
+[style.py](../src/tension_board_lab/style.py) with the feature computation, bucket edges, and
+the presets; [catalog.py](../src/tension_board_lab/catalog.py) for the position-to-hold lookup
+both the tokenizer and the export need; and
+[generator/tokenizer.py](../src/tension_board_lab/generator/tokenizer.py) with the
+problem-to-token-sequence mapping, layout handling, and `(y, x)` ordering. Covered by
+[tests/test_style.py](../tests/test_style.py) and
+[tests/generator/test_tokenizer.py](../tests/generator/test_tokenizer.py).
 
 ### Step 2: train the generator
 
