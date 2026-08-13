@@ -86,7 +86,7 @@ The Python commands expect the repository root as the working directory.
 ```
 configs/               board layout catalog, Aurora SQL queries, model specification
 data/                  local databases and generated datasets (git-ignored)
-docs/                  design notes and the roadmap
+docs/                  design notes
 checkpoints/<model>/   trained models (git-ignored)
 reports/<model>/       evaluation reports
 examples/              example input for tension-predict
@@ -109,10 +109,9 @@ on that list is reproducible from them with a documented command.
 
 ## Design notes
 
-[`docs/roadmap.md`](docs/roadmap.md) is the working record of how this was built — the approach
-that was chosen and why, what the plan got wrong, and what the measurements said.
 [`docs/board-images.md`](docs/board-images.md) covers how the board photographs were calibrated
-so that normalized coordinates land on the right holds.
+so that normalized coordinates land on the right holds — the mapping is fitted against the hold
+lattice rather than eyeballed.
 
 ## License
 

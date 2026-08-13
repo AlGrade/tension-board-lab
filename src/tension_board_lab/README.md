@@ -21,8 +21,8 @@ flowchart LR
 
 ## Modules
 
-Shared modules sit at the top level of the package; each model has its own subpackage. An
-`export/` subpackage will join them—see [`docs/roadmap.md`](../../docs/roadmap.md).
+Shared modules sit at the top level of the package; each model has its own subpackage, and
+`export/` turns both into artifacts the browser can load.
 
 | Module | Purpose |
 | --- | --- |

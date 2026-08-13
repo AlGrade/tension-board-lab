@@ -79,8 +79,8 @@ The details that actually cause silent drift, all covered above:
 ## Download size
 
 The int8 graphs are 3.10 MB for the critic and 3.77 MB for the generator. onnxruntime-web's
-wasm runtime is a separate 6.4 MB gzipped on top of that, which the roadmap's original estimate
-did not account for. Loading the generator lazily, only when someone asks for a problem, keeps
+wasm runtime is a separate 6.4 MB gzipped on top of that, which is easy to forget when counting
+only the models. Loading the generator lazily, only when someone asks for a problem, keeps
 the first paint cheap.
 
 ## Rendering
