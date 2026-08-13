@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Alexander Gradenegger" }]
 keywords = ["climbing", "tension-board", "transformer", "onnx", "generative-model"]
 classifiers = [
   "Development Status :: 4 - Beta",
