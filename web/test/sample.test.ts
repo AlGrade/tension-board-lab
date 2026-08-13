@@ -5,24 +5,16 @@
  * merely unlikely, so every sample must satisfy every rule.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { BoulderGenerator, nucleus, rankCandidates } from "../src/generate/sample";
 import { positionKey } from "../src/model/tokenizer";
 import type { BoardArtifact, GeneratorArtifact } from "../src/types";
+import { modelPath, readArtifact } from "./artifacts";
 
-const DATA = new URL("../public/data/", import.meta.url);
-const MODEL = fileURLToPath(new URL("../public/models/generator.onnx", import.meta.url));
-
-function readJson<T>(name: string): T {
-  return JSON.parse(readFileSync(new URL(name, DATA), "utf8")) as T;
-}
-
-const board = readJson<BoardArtifact>("board.json");
-const artifact = readJson<GeneratorArtifact>("generator.json");
-const hasModel = existsSync(MODEL);
+const board = readArtifact<BoardArtifact>("board.json");
+const artifact = readArtifact<GeneratorArtifact>("generator.json");
+const MODEL = modelPath("generator.onnx");
 
 /** Deterministic PRNG so a failure can be reproduced. */
 function seeded(seed: number): () => number {
@@ -87,11 +79,11 @@ describe("ranking", () => {
   });
 });
 
-describe.skipIf(!hasModel)("sampling against the real model", () => {
+describe.skipIf(!MODEL || !board || !artifact)("sampling against the real model", () => {
   const layout = "mirror";
 
   async function sample(overrides: Record<string, unknown> = {}) {
-    const generator = await BoulderGenerator.load(MODEL, artifact, board);
+    const generator = await BoulderGenerator.load(MODEL!, artifact!, board!);
     return generator.sample({
       layout,
       angle: 40,
@@ -103,7 +95,7 @@ describe.skipIf(!hasModel)("sampling against the real model", () => {
   }
 
   it("produces only valid problems", async () => {
-    const onLayout = new Set(board.layouts[layout].map((p) => positionKey(p.x, p.y)));
+    const onLayout = new Set(board!.layouts[layout].map((p) => positionKey(p.x, p.y)));
     const candidates = await sample();
     expect(candidates).toHaveLength(6);
     for (const { problem } of candidates) {
@@ -118,10 +110,10 @@ describe.skipIf(!hasModel)("sampling against the real model", () => {
 
       for (const hold of problem.holds) {
         if (hold.role === "start") {
-          expect(hold.y).toBeLessThanOrEqual(artifact.constraints.max_start_height);
+          expect(hold.y).toBeLessThanOrEqual(artifact!.constraints.max_start_height);
         }
         if (hold.role === "finish") {
-          expect(hold.y).toBeGreaterThanOrEqual(artifact.constraints.min_finish_height);
+          expect(hold.y).toBeGreaterThanOrEqual(artifact!.constraints.min_finish_height);
         }
       }
     }

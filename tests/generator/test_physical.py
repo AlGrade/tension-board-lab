@@ -43,7 +43,7 @@ def test_special_and_prefix_tokens_carry_no_hold() -> None:
 
 
 def test_every_position_on_a_layout_resolves() -> None:
-    for layout_index, layout in enumerate(VOCABULARY.layouts):
+    for layout_index in range(len(VOCABULARY.layouts)):
         resolved = sum(1 for value in TYPE_IDS[layout_index] if value != UNKNOWN_HOLD_TYPE)
         # 498 positions, four roles each, all sharing one physical hold.
         assert resolved == 498 * len(HOLD_ROLES)

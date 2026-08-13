@@ -1,5 +1,10 @@
 # Roadmap: the boulder problem generator
 
+> **A working record, not current documentation.** This is the plan the generator was built
+> from, kept with the outcomes written back into it: what each step actually produced, where
+> the plan was wrong, and what the measurements said. For how the code works today, read
+> [`src/tension_board_lab/`](../src/tension_board_lab/README.md) and [`web/`](../web/README.md).
+
 The goal is a React application without a backend. You enter a grade and a wall angle, and you
 see a **newly generated** problem on a rendered Tension Board 2 12x12. Transferring the problem
 to the wall over Web Bluetooth is an optional last step.

@@ -5,17 +5,11 @@
  * `collate_routes`, the app shows wrong grades and nothing errors.
  */
 
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { calibratedProbabilities, expectedGradeIndex, featurize } from "../src/model/featurize";
 import type { CriticArtifact, Hold, HoldRole, Problem } from "../src/types";
-
-const DATA = new URL("../public/data/", import.meta.url);
-
-function readJson<T>(name: string): T {
-  return JSON.parse(readFileSync(new URL(name, DATA), "utf8")) as T;
-}
+import { MISSING_ARTIFACTS, readArtifact } from "./artifacts";
 
 interface Fixture {
   problem: {
@@ -40,8 +34,9 @@ interface Fixture {
   logits: number[];
 }
 
-const critic = readJson<CriticArtifact>("critic.json");
-const fixtures = readJson<{ temperature: number; cases: Fixture[] }>("fixtures.json");
+const critic = readArtifact<CriticArtifact>("critic.json");
+const fixtures = readArtifact<{ temperature: number; cases: Fixture[] }>("fixtures.json");
+const unavailable = critic === undefined || fixtures === undefined;
 
 function toProblem(fixture: Fixture): Problem {
   return {
@@ -59,16 +54,16 @@ function toProblem(fixture: Fixture): Problem {
   };
 }
 
-describe("featurize", () => {
+describe.skipIf(unavailable)(`featurize (${MISSING_ARTIFACTS})`, () => {
   it("has fixtures to check against", () => {
-    expect(fixtures.cases.length).toBeGreaterThan(0);
+    expect(fixtures!.cases.length).toBeGreaterThan(0);
   });
 
-  fixtures.cases.forEach((fixture, index) => {
+  (fixtures?.cases ?? []).forEach((fixture, index) => {
     const holds = fixture.problem.holds.length;
 
     it(`matches PyTorch tensors for fixture ${index} (${holds} holds)`, () => {
-      const tensors = featurize([toProblem(fixture)], critic);
+      const tensors = featurize([toProblem(fixture)], critic!);
       expect(tensors.nodes).toBe(holds);
 
       expect([...tensors.holdTypeIds].map(Number)).toEqual(fixture.tensors.hold_type_ids);
@@ -91,9 +86,9 @@ describe("featurize", () => {
   });
 
   it("pads a mixed batch to the longest problem and masks the rest", () => {
-    const short = toProblem(fixtures.cases[0]);
-    const long = toProblem(fixtures.cases[fixtures.cases.length - 1]);
-    const tensors = featurize([short, long], critic);
+    const short = toProblem(fixtures!.cases[0]);
+    const long = toProblem(fixtures!.cases[fixtures!.cases.length - 1]);
+    const tensors = featurize([short, long], critic!);
     expect(tensors.nodes).toBe(Math.max(short.holds.length, long.holds.length));
 
     for (let column = 0; column < tensors.nodes; column += 1) {
@@ -107,34 +102,34 @@ describe("featurize", () => {
   });
 
   it("keeps holds in the order they were given", () => {
-    const problem = toProblem(fixtures.cases[1]);
+    const problem = toProblem(fixtures!.cases[1]);
     const reversed: Problem = { ...problem, holds: [...problem.holds].reverse() };
-    const forward = featurize([problem], critic);
-    const backward = featurize([reversed], critic);
+    const forward = featurize([problem], critic!);
+    const backward = featurize([reversed], critic!);
     expect([...backward.roles].map(Number)).toEqual([...forward.roles].map(Number).reverse());
   });
 
   it("maps an unknown hold type to index 0 rather than throwing", () => {
-    const problem = toProblem(fixtures.cases[0]);
+    const problem = toProblem(fixtures!.cases[0]);
     problem.holds[0].holdType = "wood:NOT-A-REAL-HOLD";
-    expect(featurize([problem], critic).holdTypeIds[0]).toBe(0n);
+    expect(featurize([problem], critic!).holdTypeIds[0]).toBe(0n);
   });
 
   it("uses the same role order as the exported contract", () => {
-    expect(critic.role_to_index).toEqual({ start: 0, hand: 1, foot: 2, finish: 3 });
+    expect(critic!.role_to_index).toEqual({ start: 0, hand: 1, foot: 2, finish: 3 });
   });
 });
 
-describe("calibration", () => {
+describe.skipIf(unavailable)("calibration", () => {
   it("reproduces softmax(logits / temperature) from the fixtures", () => {
-    const fixture = fixtures.cases[0];
-    const probabilities = calibratedProbabilities(fixture.logits, fixtures.temperature);
+    const fixture = fixtures!.cases[0];
+    const probabilities = calibratedProbabilities(fixture.logits, fixtures!.temperature);
     const total = probabilities.reduce((sum, value) => sum + value, 0);
     expect(total).toBeCloseTo(1, 10);
-    expect(probabilities.length).toBe(critic.grade_labels.length);
+    expect(probabilities.length).toBe(critic!.grade_labels.length);
 
     // Recomputed independently, without the max-subtraction guard.
-    const naive = fixture.logits.map((value) => Math.exp(value / fixtures.temperature));
+    const naive = fixture.logits.map((value) => Math.exp(value / fixtures!.temperature));
     const naiveTotal = naive.reduce((sum, value) => sum + value, 0);
     probabilities.forEach((value, index) => {
       expect(value).toBeCloseTo(naive[index] / naiveTotal, 10);
@@ -142,8 +137,8 @@ describe("calibration", () => {
   });
 
   it("uses the temperature the critic was calibrated with", () => {
-    expect(critic.temperature).toBeCloseTo(1.67, 2);
-    expect(fixtures.temperature).toBeCloseTo(critic.temperature, 10);
+    expect(critic!.temperature).toBeCloseTo(1.67, 2);
+    expect(fixtures!.temperature).toBeCloseTo(critic!.temperature, 10);
   });
 
   it("computes the expected grade as a probability-weighted index", () => {

@@ -72,7 +72,7 @@ def test_eos_is_blocked_until_the_problem_is_valid() -> None:
     only_start = [VOCABULARY.hold_token(low, "start")]
     assert not rules.mask_for(only_start)[EOS]
 
-    with_finish = only_start + [VOCABULARY.hold_token(high, "finish")]
+    with_finish = [*only_start, VOCABULARY.hold_token(high, "finish")]
     assert rules.mask_for(with_finish)[EOS]
     assert rules.is_complete(with_finish)
 
@@ -81,7 +81,7 @@ def test_missing_roles_are_forced_before_the_hold_limit() -> None:
     rules = constraints(max_holds=4)
     positions = [p for p in mirror_positions() if MIN_FINISH_HEIGHT <= p[1] <= MAX_START_HEIGHT]
     chosen = [VOCABULARY.hold_token(positions[0], "start")]
-    chosen += [VOCABULARY.hold_token(positions[index], "hand") for index in (1, 2)]
+    chosen = [*chosen, *(VOCABULARY.hold_token(positions[i], "hand") for i in (1, 2))]
     # One slot left and no finish yet: only finishes may be sampled.
     allowed = rules.mask_for(chosen)
     assert not allowed[EOS]

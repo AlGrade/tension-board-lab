@@ -28,7 +28,11 @@ def hold_type_index(catalog: HoldCatalog) -> dict[str, int]:
     """Stable ids for every hold type on the board, 1-based like the critic's vocabulary."""
 
     types = sorted(
-        {placement.hold_type for layout in catalog.placements.values() for placement in layout.values()}
+        {
+            placement.hold_type
+            for layout in catalog.placements.values()
+            for placement in layout.values()
+        }
     )
     return {hold_type: index + 1 for index, hold_type in enumerate(types)}
 

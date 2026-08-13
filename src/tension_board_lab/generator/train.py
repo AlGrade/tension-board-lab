@@ -7,6 +7,7 @@ import json
 import random
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -332,9 +333,7 @@ def main() -> None:
         flush=True,
     )
 
-    collate = lambda batch: collate_sequences(
-        batch, guidance_dropout=args.guidance_dropout
-    )
+    collate = partial(collate_sequences, guidance_dropout=args.guidance_dropout)
     evaluation_collate = collate_sequences  # no dropout when measuring
     train_loader = DataLoader(
         SequenceDataset(encode_dataset(augmented, vocabulary, catalog)),

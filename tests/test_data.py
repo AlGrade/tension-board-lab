@@ -94,7 +94,7 @@ def test_mirrored_copies_remain_in_one_split() -> None:
             HoldNode("finish", 0.3, 0.9, "plastic:20", 45),
         ),
     )
-    splits = split_examples(examples + [left, right])
+    splits = split_examples([*examples, left, right])
     locations = {
         split_index
         for split_index, split in enumerate(splits)

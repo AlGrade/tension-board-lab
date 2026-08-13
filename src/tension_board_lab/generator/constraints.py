@@ -66,7 +66,7 @@ class BoulderConstraints:
         position_tokens = torch.arange(len(vocabulary.positions) * roles) + vocabulary.hold_offset
         self.position_tokens = position_tokens.view(-1, roles)
 
-        for index, position in enumerate(vocabulary.positions):
+        for position in vocabulary.positions:
             if not catalog.contains(layout, *position):
                 continue
             y = position[1]

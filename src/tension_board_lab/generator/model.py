@@ -124,7 +124,11 @@ class BoulderGenerator(nn.Module):
         self.register_buffer(
             "causal_mask",
             torch.triu(
-                torch.ones(config.max_sequence_length, config.max_sequence_length, dtype=torch.bool),
+                torch.ones(
+                    config.max_sequence_length,
+                    config.max_sequence_length,
+                    dtype=torch.bool,
+                ),
                 diagonal=1,
             ),
             persistent=False,

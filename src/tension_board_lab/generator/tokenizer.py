@@ -227,7 +227,7 @@ def encode(
     )
     body = tuple(
         vocabulary.hold_token(position, hold.role)
-        for position, hold in zip(positions, holds)
+        for position, hold in zip(positions, holds, strict=True)
     )
     return prefix + body + (EOS,)
 

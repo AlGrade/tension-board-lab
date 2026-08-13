@@ -149,7 +149,7 @@ def test_decode_ignores_trailing_padding() -> None:
 
 def test_decode_rejects_a_repeated_position() -> None:
     tokens = encode(PROBLEM, VOCABULARY, CATALOG)
-    duplicated = tokens[:-1] + (tokens[1 + PREFIX_LENGTH],) + (EOS,)
+    duplicated = (*tokens[:-1], tokens[1 + PREFIX_LENGTH], EOS)
     with pytest.raises(ValueError):
         decode(duplicated, VOCABULARY, CATALOG)
 

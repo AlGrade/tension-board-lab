@@ -6,6 +6,7 @@ import argparse
 import json
 import random
 from collections.abc import Iterable, Sequence
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -164,7 +165,7 @@ def main() -> None:
                 f"Grade {example.grade} appears outside the training grade span; collect more data"
             )
 
-    collate = lambda batch: collate_routes(batch, vocabulary)
+    collate = partial(collate_routes, vocabulary=vocabulary)
     generator = torch.Generator().manual_seed(args.seed)
     train_loader = DataLoader(
         RouteDataset(train_examples),
@@ -197,7 +198,9 @@ def main() -> None:
     )
     if not pretraining_examples:
         raise ValueError("No leakage-free pretraining examples remain")
-    pretrain_collate = lambda batch: collate_routes(batch, vocabulary, uncertain_targets=True)
+    pretrain_collate = partial(
+        collate_routes, vocabulary=vocabulary, uncertain_targets=True
+    )
     pretrain_loader = DataLoader(
         RouteDataset(pretraining_examples),
         batch_size=args.batch_size,

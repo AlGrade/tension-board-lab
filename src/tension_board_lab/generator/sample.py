@@ -184,12 +184,14 @@ def score_with_critic(
 
     batch = move_batch(collate_routes(list(problems), vocabulary), device)
     distribution = probabilities(forward_batch(critic, batch), temperature)
-    axis = torch.arange(distribution.shape[-1], device=distribution.device, dtype=distribution.dtype)
+    axis = torch.arange(
+        distribution.shape[-1], device=distribution.device, dtype=distribution.dtype
+    )
     expectations = (distribution * axis).sum(dim=-1)
     confidences = distribution.max(dim=-1).values
     return [
         (float(expectation.item()), float(confidence.item()))
-        for expectation, confidence in zip(expectations, confidences)
+        for expectation, confidence in zip(expectations, confidences, strict=True)
     ]
 
 
@@ -221,7 +223,7 @@ def rank_candidates(
 
     candidates = []
     for problem, likelihood, (expectation, confidence) in zip(
-        problems, log_likelihoods, critic_scores
+        problems, log_likelihoods, critic_scores, strict=True
     ):
         score = grade_weight * abs(expectation - target_index) - likelihood_weight * (
             per_token_likelihood(problem, likelihood)

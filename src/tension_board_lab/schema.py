@@ -88,7 +88,9 @@ class RouteExample:
         if grade_value is not None and (
             not math.isfinite(grade_value) or not 0.0 <= grade_value < len(V_GRADES)
         ):
-            raise ValueError(f"Continuous V-grade value is outside the supported range: {grade_value}")
+            raise ValueError(
+                f"Continuous V-grade value is outside the supported range: {grade_value}"
+            )
         return cls(
             climb_id=str(raw.get("climb_id", "prediction")),
             angle=angle,

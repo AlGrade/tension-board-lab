@@ -6,19 +6,14 @@
  * what the app actually depends on.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { Critic } from "../src/model/critic";
 import type { CriticArtifact, Hold, HoldRole, Problem } from "../src/types";
+import { modelPath, readArtifact } from "./artifacts";
 
-const DATA = new URL("../public/data/", import.meta.url);
-const MODEL = fileURLToPath(new URL("../public/models/grade.onnx", import.meta.url));
-
-function readJson<T>(name: string): T {
-  return JSON.parse(readFileSync(new URL(name, DATA), "utf8")) as T;
-}
+const MODEL = modelPath("grade.onnx");
 
 interface Fixture {
   problem: {
@@ -35,9 +30,8 @@ interface Fixture {
   logits: number[];
 }
 
-const hasModel = existsSync(MODEL);
-const critic = readJson<CriticArtifact>("critic.json");
-const fixtures = readJson<{ temperature: number; cases: Fixture[] }>("fixtures.json");
+const critic = readArtifact<CriticArtifact>("critic.json");
+const fixtures = readArtifact<{ temperature: number; cases: Fixture[] }>("fixtures.json");
 
 function toProblem(fixture: Fixture): Problem {
   return {
@@ -55,17 +49,17 @@ function toProblem(fixture: Fixture): Problem {
   };
 }
 
-describe.skipIf(!hasModel)("critic through onnxruntime", () => {
+describe.skipIf(!MODEL || !critic || !fixtures)("critic through onnxruntime", () => {
   it("reproduces the PyTorch logits for every fixture", async () => {
-    const model = await Critic.load(MODEL, critic);
-    for (const fixture of fixtures.cases) {
+    const model = await Critic.load(MODEL!, critic!);
+    for (const fixture of fixtures!.cases) {
       const [prediction] = await model.predict([toProblem(fixture)]);
       const expected = fixture.logits;
       prediction.probabilities.forEach((_, index) => {
         expect(prediction.probabilities[index]).toBeGreaterThanOrEqual(0);
       });
       // Compare logits by way of the probabilities they produce, which is what the UI shows.
-      const scaled = expected.map((value) => value / fixtures.temperature);
+      const scaled = expected.map((value) => value / fixtures!.temperature);
       const largest = Math.max(...scaled);
       const exponentials = scaled.map((value) => Math.exp(value - largest));
       const total = exponentials.reduce((sum, value) => sum + value, 0);
@@ -76,8 +70,8 @@ describe.skipIf(!hasModel)("critic through onnxruntime", () => {
   }, 120_000);
 
   it("scores a batch identically to one problem at a time", async () => {
-    const model = await Critic.load(MODEL, critic);
-    const problems = fixtures.cases.slice(0, 5).map(toProblem);
+    const model = await Critic.load(MODEL!, critic!);
+    const problems = fixtures!.cases.slice(0, 5).map(toProblem);
     const batched = await model.predict(problems);
     for (const [index, problem] of problems.entries()) {
       const [single] = await model.predict([problem]);
@@ -88,7 +82,7 @@ describe.skipIf(!hasModel)("critic through onnxruntime", () => {
   }, 120_000);
 
   it("agrees with the documented example prediction", async () => {
-    const model = await Critic.load(MODEL, critic);
+    const model = await Critic.load(MODEL!, critic!);
     const route = JSON.parse(
       readFileSync(new URL("../../examples/route.json", import.meta.url), "utf8"),
     ) as {
