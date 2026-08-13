@@ -247,6 +247,7 @@ export default function App() {
               </button>
             </p>
           </div>
+
         </section>
 
         <aside className="panel">

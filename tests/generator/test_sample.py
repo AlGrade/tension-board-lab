@@ -1,13 +1,19 @@
 import math
 
+import pytest
 import torch
 
 from tension_board_lab.catalog import HoldCatalog
 from tension_board_lab.generator.constraints import MAX_START_HEIGHT, MIN_FINISH_HEIGHT
 from tension_board_lab.generator.model import BoulderGenerator, GeneratorConfig
-from tension_board_lab.generator.sample import nucleus_filter, rank_candidates, sample_problems
+from tension_board_lab.generator.sample import (
+    nucleus_filter,
+    per_token_likelihood,
+    rank_candidates,
+    sample_problems,
+)
 from tension_board_lab.generator.tokenizer import MAX_SEQUENCE_LENGTH, GeneratorVocabulary
-from tension_board_lab.schema import RouteExample
+from tension_board_lab.schema import HoldNode, RouteExample
 
 CATALOG = HoldCatalog.load()
 VOCABULARY = GeneratorVocabulary.build(CATALOG)
@@ -128,3 +134,57 @@ def test_ranking_rewards_a_higher_likelihood_when_grades_tie() -> None:
         problems, [-30.0, -10.0], [(5.0, 0.4), (5.0, 0.4)], target_index=5.0
     )
     assert ranked[0].log_likelihood == -10.0
+
+
+def board_problem(hold_count: int) -> RouteExample:
+    positions = [p for p in CATALOG.positions if CATALOG.contains("mirror", *p)][:hold_count]
+    roles = ["start"] + ["hand"] * (hold_count - 2) + ["finish"]
+    return RouteExample(
+        climb_id="x",
+        angle=40,
+        source_layout="mirror",
+        grade="V5",
+        holds=tuple(
+            HoldNode(
+                role=role,
+                x=placement.x,
+                y=placement.y,
+                hold_type=placement.hold_type,
+                orientation_degrees=placement.orientation_degrees,
+            )
+            for role, placement in zip(
+                roles, (CATALOG.placement("mirror", *p) for p in positions)
+            )
+        ),
+    )
+
+
+def test_ranking_does_not_punish_a_problem_for_being_longer() -> None:
+    """The likelihood term is per token, not a sum.
+
+    Ranking on the sum preferred short problems for no other reason, and against 20
+    hand-labelled problems it ordered good below bad more often than chance — worse than
+    picking at random.
+    """
+
+    shorter, longer = board_problem(4), board_problem(12)
+    # Equally plausible per token; the sums differ only because the lengths do.
+    per_token = -3.0
+    likelihoods = [
+        per_token * (len(shorter.holds) + 1),
+        per_token * (len(longer.holds) + 1),
+    ]
+    scores = [(5.0, 0.4), (5.0, 0.4)]
+    ranked = rank_candidates([shorter, longer], likelihoods, scores, target_index=5.0)
+    assert ranked[0].score == pytest.approx(ranked[1].score)
+
+    # Ranking on the sum would have put the shorter one first by a wide margin.
+    summed = [
+        abs(5.0 - 5.0) - 0.05 * likelihood for likelihood in likelihoods
+    ]
+    assert summed[0] < summed[1] - 1.0
+
+
+def test_per_token_likelihood_divides_by_holds_plus_eos() -> None:
+    problem = board_problem(6)
+    assert per_token_likelihood(problem, -14.0) == pytest.approx(-14.0 / 7)

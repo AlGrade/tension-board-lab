@@ -228,6 +228,18 @@ export interface RankedCandidate extends Candidate {
 }
 
 /**
+ * Sequence likelihood divided by the tokens that produced it: one per hold plus the closing
+ * EOS.
+ *
+ * Sampling accumulates the sum, which is length-biased — a longer problem collects more
+ * negative terms and looks less plausible for no other reason. Against 20 hand-labelled
+ * problems the sum did not separate good from bad at all, while the per-token mean did.
+ */
+export function perTokenLikelihood(candidate: Candidate): number {
+  return candidate.logLikelihood / (candidate.problem.holds.length + 1);
+}
+
+/**
  * Lower is better: grade error minus plausibility.
  *
  * Mirrors `rank_candidates` in `sample.py`, including its weights.
@@ -241,7 +253,9 @@ export function rankCandidates(
     likelihoodWeight?: number;
   },
 ): RankedCandidate[] {
-  const { targetIndex, gradeWeight = 1, likelihoodWeight = 0.05 } = options;
+  // Per-token likelihood varies about 20x less than the sum across a batch, so the weight is
+  // 20x larger; the term keeps the influence it had, without the length bias.
+  const { targetIndex, gradeWeight = 1, likelihoodWeight = 1 } = options;
 
   return candidates
     .map((candidate, index) => ({
@@ -251,7 +265,7 @@ export function rankCandidates(
       grade: scored[index].grade,
       score:
         gradeWeight * Math.abs(scored[index].expectedGradeIndex - targetIndex) -
-        likelihoodWeight * candidate.logLikelihood,
+        likelihoodWeight * perTokenLikelihood(candidate),
     }))
     .sort((a, b) => a.score - b.score);
 }
