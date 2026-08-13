@@ -138,37 +138,89 @@ Input format: [`../../examples/route.json`](../../examples/route.json). Full rep
 
 ## 3. The generator
 
-Ask for a grade and an angle, and it invents problems that do not exist yet. It works the way
-phone keyboards predict the next word, except it is placing holds instead of words — one at a
-time, bottom of the wall to top, each choice informed by everything already placed. It learned
-by reading 44,000 real problems, so what it produces looks like something a person would set
-rather than a random scatter of holds.
+Ask for a grade and an angle, and it invents problems that do not exist yet. It is also a neural
+network, but a different kind: a *decoder-only transformer*, the same family as the models
+behind text autocomplete. It places holds instead of words — one at a time, bottom of the wall
+to top, each choice informed by everything already placed. 3.1 million parameters.
 
-### How it works
+```mermaid
+flowchart LR
+    A["Request<br/>layout · angle · grade"] --> C
+    B["Holds placed so far"] --> C["Decoder-only Transformer"]
+    C --> D["A score for every<br/>possible next hold"]
+    D -->|"pick one, repeat"| B
+```
 
-*It picks positions, not holds.* The model says "position 47, for a hand" — the wall tells it
-which hold is bolted there. That keeps its vocabulary at 2,182 choices instead of tens of
-thousands. It is still *told* what hangs at each position, because that generalizes: 56 of the
-106 hold types are used for one purpose more than 70% of the time, and knowing a hold is
-foot-shaped transfers across every position it appears at.
+It learned by reading 44,000 real problems, so what it produces looks like something a person
+would set rather than a random scatter of holds.
 
-*Impossible problems cannot be produced.* Rather than generating freely and discarding the
-nonsense, illegal choices are switched off while it builds. A hold already used cannot be
-reused; the climb cannot end before it has a start and a finish. Invalid output is unreachable,
-not merely unlikely.
+### Inside the network
+
+**What goes in.** A sequence of *tokens*, exactly like a sentence. The first four spell out the
+request — a start marker, the layout, the angle, the grade — and every token after that is one
+placed hold. A hold token is a single number standing for a `(position, role)` pair: "position
+47, used as a hand". There are 2,182 such tokens in total, and a problem never runs past 40.
+
+Crucially the model picks a *position*, not a hold — the wall tells it what is bolted there.
+Otherwise every combination of hold type and place would need its own token and the vocabulary
+would explode. It is still *told* what hangs at each position, because that knowledge
+generalizes: 56 of the 106 hold types are used for one purpose more than 70% of the time, and
+knowing a hold is foot-shaped transfers to every position it appears at.
+
+**What happens inside.** Six transformer layers with eight attention heads, 192 numbers wide.
+The attention is *causal*: when deciding the fifth hold it may look at the request and the four
+holds already placed, never at what comes later. That is what makes generating one hold at a
+time coherent rather than a lottery.
+
+**What comes out.** For every place in the sequence, 2,182 numbers — one score per possible next
+token. Only the last position matters while generating: it is the model's opinion about what to
+place next. Softmaxed into probabilities, asked for a V6 at 40°, its first pick looks like this:
+
+```
+ 8.5%  position (0.375, 0.000) as foot
+ 7.1%  position (0.625, 0.000) as foot
+ 5.3%  position (0.188, 0.000) as foot
+ 4.8%  position (0.250, 0.000) as foot
+ 4.7%  position (0.312, 0.000) as foot
+```
+
+Every one of the top five is a foot on the bottom row of the wall, which is exactly where a
+problem starts. Nobody coded that rule; it came from the data.
+
+**Impossible problems cannot be produced.** Before the pick, illegal choices are struck out —
+their score set to minus infinity, so the probability is exactly zero. A hold already used
+cannot be reused, positions on the other layout do not exist, and the climb cannot end before it
+has a start and a finish. At the first step 1,860 of the 2,182 tokens survive. Invalid output is
+unreachable rather than merely unlikely, and no candidate has to be thrown away afterwards.
+
+### Training it
+
+The training task is the one language models use: given everything so far, predict the next
+token, and penalise being wrong. Nothing about climbing is encoded in the objective — the model
+only ever learns to continue real problems plausibly.
+
+The data is the 44,234 problems the critic never held out, split with the critic's own splitting
+code. Sharing that code is the point: a copy would eventually drift and quietly invalidate every
+"the generator hits the target grade" number. The training half is then mirrored — the mirror
+layout is perfectly symmetric, so reflecting a problem left to right yields another real one,
+taking 36,169 problems to **59,435**.
+
+One trick earns the *guidance* dial. During training the request is blanked out 10% of the time,
+so the model also learns what a problem looks like when nothing was asked for. At generation
+time both are run and the difference between them is amplified: turn guidance up and problems
+match the requested grade more closely, turn it down and they look more like real problems. It
+is a genuine trade, not a setting with a best value.
+
+AdamW, a cosine schedule, early stopping; this checkpoint ran 24 epochs and kept epoch 12.
 
 Every sample is valid, none reproduced a problem from the corpus, and candidates within a batch
 are almost entirely distinct. Asked for a grade, the critic reads the result within about **0.9
-V grades** on average. A dial called *guidance* trades one goal against the other: turn it up
-and problems match the requested grade more closely, turn it down and they look more like real
-problems.
+V grades** on average.
 
 What it still gets wrong: it learned which holds appear together, not how a body moves between
 them. It can place a foot too far from the hold it is meant to support, or use a hold turned the
 wrong way for the hand that would reach it. Harder problems suffer most, because there are fewer
 of them to learn from.
-
-### Training and sampling
 
 ```bash
 tension-train-generator data/processed/tb2_12x12_pretrain.jsonl \
@@ -180,11 +232,6 @@ tension-sample checkpoints/generator/tb2_12x12.pt \
 
 tension-eval-generator --output reports/generator/latest.metrics.json
 ```
-
-The generator trains only on problems the critic never held out, using the same splitting code —
-otherwise "the generator hits the target grade" would be measuring a leak. The mirror layout is
-perfectly symmetric, so every problem on it is reflected to give a second real one: 36,169
-training problems become 59,435.
 
 One caveat on every number: grade accuracy here means *agreement with the critic*, not with
 reality. It is meaningful only because the generator never saw the critic's test problems.
