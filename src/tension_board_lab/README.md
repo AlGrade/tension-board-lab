@@ -145,8 +145,9 @@ to top, each choice informed by everything already placed. 3.1 million parameter
 
 ```mermaid
 flowchart LR
-    A["Request<br/>layout · angle · grade"] --> C
+    A["Request<br/>angle · grade"] --> C
     B["Holds placed so far"] --> C["Decoder-only Transformer"]
+    W["Which wall<br/>mirror or spray"] --> C
     C --> D["A score for every<br/>possible next hold"]
     D -->|"pick one, repeat"| B
 ```
@@ -166,6 +167,13 @@ Otherwise every combination of hold type and place would need its own token and 
 would explode. It is still *told* what hangs at each position, because that knowledge
 generalizes: 56 of the 106 hold types are used for one purpose more than 70% of the time, and
 knowing a hold is foot-shaped transfers to every position it appears at.
+
+*Which wall, though?* This board comes in two layouts, and the same position carries a different
+hold on each — 432 of the 459 positions they share. A token names only the position, so the
+layout cannot be read off the sequence: it is a **second input** to the model, alongside the
+tokens, and it is what turns "position 47" into an actual hold. It also appears as a token in
+the request, but that alone would not do. Training blanks the request 10% of the time to earn
+the guidance dial, and the wall does not change when you stop asking for a grade.
 
 **What happens inside.** Six transformer layers with eight attention heads, 192 numbers wide.
 The attention is *causal*: when deciding the fifth hold it may look at the request and the four
