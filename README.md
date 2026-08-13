@@ -1,6 +1,5 @@
 # Tension Board Lab
 
-[![CI](https://github.com/AlGrade/tension-board-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/AlGrade/tension-board-lab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Two small models for boulder problems on a **Tension Board 2 12x12**, and a web app that runs
