@@ -11,25 +11,26 @@ This package is three things, in the order they depend on each other.
 
 ## 1. The data pipeline
 
-**What it does.** Turns the app's own database into training data.
-
 Climbers set problems in the Aurora app, climb each other's, and vote on how hard they were.
-That history is a local database. The pipeline reads it, throws away everything the models must
-not see — who set the problem, what it is called, how popular it is — and keeps only the
-physical facts: which holds, what each is for, and how steep the wall was.
+That history is a local database. The pipeline turns it into training data.
 
-It also fixes the coordinate system. The board's raw numbers become `0` to `1` across the wall
-and `0` to `1` up it, so nothing downstream depends on the board's own units.
+### What it keeps
 
-**What comes out.** 21,809 problems that at least three people have climbed and graded, at five
-wall angles. A typical one uses 10 holds; the largest uses 35. A second, larger set keeps
-everything with at least one ascent — noisier, but useful for teaching a model what a problem
-looks like.
+It throws away everything the models must not see — who set the problem, what it is called, how
+popular it is — and keeps only the physical facts: which holds, what each one is for, and how
+steep the wall was. It also rewrites the board's raw numbers as `0` to `1` across the wall and
+`0` to `1` up it, so nothing downstream depends on the board's own units.
 
-**One thing worth knowing.** Before splitting the data into training and test sets, problems are
-grouped by what the model would actually see. A renamed copy, or the same problem mirrored left
-to right, lands in the same group. Without that, a model could be tested on a problem it had
-already memorized under another name, and the reported accuracy would be fiction.
+Out come 21,809 problems that at least three people have climbed and graded, at five wall
+angles. A typical one uses 10 holds; the largest uses 35. A second, larger set keeps everything
+with at least one ascent — noisier, but useful for teaching a model what a problem looks like.
+
+Before the data is split into training and test sets, problems are grouped by what a model would
+actually see. A renamed copy, or the same problem mirrored left to right, lands in the same
+group. Without that a model could be tested on a problem it had already memorized under another
+name, and the reported accuracy would be fiction.
+
+### Rebuilding the datasets
 
 ```bash
 tension-import-aurora data/raw/tension.sqlite3 \
@@ -45,37 +46,42 @@ filter only — three ascents versus one.
 
 ## 2. The grade critic
 
-**What it does.** You show it a problem and how steep the wall is. It tells you how hard the
-problem is, and how sure it is.
+Show it a problem and how steep the wall is, and it tells you how hard the problem is and how
+sure it is.
 
+```mermaid
+flowchart LR
+    A["Wall angle<br/>e.g. 45°"] --> C
+    B["Selected holds<br/>type · rotation · position · role"] --> C["Graph Transformer"]
+    C --> D["Predicted grade<br/>e.g. V9"]
+    C --> E["Confidence<br/>e.g. 38%"]
 ```
-V9, 38% confident
-```
 
-Climbing grades run V0, V1, V2 and upwards. The critic is not measuring anything objective —
-it is predicting what the climbing community would agree on, which is itself a matter of
-opinion. A confidence of 38% means the model is fairly sure, not that 38% of climbers agree.
+Climbing grades run V0, V1, V2 and upwards. The critic is not measuring anything objective — it
+predicts what the climbing community would agree on, which is itself a matter of opinion. A
+confidence of 38% means the model is fairly sure, not that 38% of climbers agree.
 
-**How it works, roughly.** Every selected hold becomes a point. The model looks at each pair of
-points — how far apart, in which direction, how that direction relates to the overhang — and
-learns which combinations of reaches are hard. It never sees the problem's name, its popularity,
-or which of the two board layouts it came from. 2.85 million parameters.
+### How well it works
 
-**How well it works.** On 2,174 problems it had never seen: it is off by **0.935 V grades on
-average**, and lands within one grade **78%** of the time. For comparison, climbers routinely
-disagree by a grade.
+Every selected hold becomes a point. The model looks at each pair of points — how far apart, in
+which direction, how that direction relates to the overhang — and learns which combinations of
+reaches are hard. It never sees the problem's name, its popularity, or which of the two board
+layouts it came from. 2.85 million parameters.
+
+On 2,174 problems it had never seen, it is off by **0.935 V grades on average** and lands within
+one grade **78%** of the time. For comparison, climbers routinely disagree by a grade.
 
 Accuracy follows the data. At 35°, where there are many problems, the error is 0.849. At 55°,
 where only 389 exist, it is 1.063. Above V11 the data thins the same way — 74 problems at V13,
 three at V14 — so treat hard grades as informed guesses.
 
+### Training and predicting
+
 ```bash
-# train
 tension-train-grade data/processed/tb2_12x12.jsonl \
   --pretrain-dataset data/processed/tb2_12x12_pretrain.jsonl \
   --output checkpoints/grade/tb2_12x12.pt
 
-# use
 tension-predict checkpoints/grade/tb2_12x12.pt examples/route.json
 ```
 
@@ -86,14 +92,13 @@ Input format: [`../../examples/route.json`](../../examples/route.json). Full rep
 
 ## 3. The generator
 
-**What it does.** You ask for a grade and an angle. It invents problems that do not exist yet.
+Ask for a grade and an angle, and it invents problems that do not exist yet. It works the way
+phone keyboards predict the next word, except it is placing holds instead of words — one at a
+time, bottom of the wall to top, each choice informed by everything already placed. It learned
+by reading 44,000 real problems, so what it produces looks like something a person would set
+rather than a random scatter of holds.
 
-It works the way phone keyboards predict the next word, except it is placing holds instead of
-words — one at a time, bottom of the wall to top, each choice informed by everything already
-placed. It learned by reading 44,000 real problems, so what it produces looks like something a
-person would set rather than a random scatter of holds.
-
-**Two ideas make it work.**
+### How it works
 
 *It picks positions, not holds.* The model says "position 47, for a hand" — the wall tells it
 which hold is bolted there. That keeps its vocabulary at 2,182 choices instead of tens of
@@ -102,34 +107,31 @@ thousands. It is still *told* what hangs at each position, because that generali
 foot-shaped transfers across every position it appears at.
 
 *Impossible problems cannot be produced.* Rather than generating freely and discarding the
-nonsense, illegal choices are switched off while it builds. A hold already used cannot be reused;
-the climb cannot end before it has a start and a finish. Invalid output is unreachable, not
-merely unlikely.
+nonsense, illegal choices are switched off while it builds. A hold already used cannot be
+reused; the climb cannot end before it has a start and a finish. Invalid output is unreachable,
+not merely unlikely.
 
-**How well it works.** Every sample is valid, none reproduced a problem from the corpus, and
-candidates within a batch are almost entirely distinct. Asked for a grade, the critic reads the
-result within about **0.9 V grades** on average.
+Every sample is valid, none reproduced a problem from the corpus, and candidates within a batch
+are almost entirely distinct. Asked for a grade, the critic reads the result within about **0.9
+V grades** on average. A dial called *guidance* trades one goal against the other: turn it up
+and problems match the requested grade more closely, turn it down and they look more like real
+problems.
 
-There is a dial called *guidance*: turn it up and problems match the requested grade more
-closely, turn it down and they look more like real problems. That is a genuine trade, not a
-setting with a best value.
+What it still gets wrong: it learned which holds appear together, not how a body moves between
+them. It can place a foot too far from the hold it is meant to support, or use a hold turned the
+wrong way for the hand that would reach it. Harder problems suffer most, because there are fewer
+of them to learn from.
 
-**What it still gets wrong.** It learned which holds appear together, not how a body moves
-between them. It can place a foot too far from the hold it is meant to support, or use a hold
-turned the wrong way for the hand that would reach it. Harder problems suffer most, because
-there are fewer of them to learn from.
+### Training and sampling
 
 ```bash
-# train
 tension-train-generator data/processed/tb2_12x12_pretrain.jsonl \
   --consensus-dataset data/processed/tb2_12x12.jsonl \
   --output checkpoints/generator/tb2_12x12.pt
 
-# use
 tension-sample checkpoints/generator/tb2_12x12.pt \
   --critic checkpoints/grade/tb2_12x12.pt --grade V5 --angle 40
 
-# measure
 tension-eval-generator --output reports/generator/latest.metrics.json
 ```
 
