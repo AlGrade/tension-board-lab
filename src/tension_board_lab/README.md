@@ -47,7 +47,8 @@ filter only — three ascents versus one.
 ## 2. The grade critic
 
 Show it a problem and how steep the wall is, and it tells you how hard the problem is and how
-sure it is.
+sure it is. It is a neural network — a *graph transformer*, trained from scratch on this board's
+history. 2.85 million parameters, which is small: it fits in 3 MB and runs in a browser tab.
 
 ```mermaid
 flowchart LR
@@ -61,21 +62,66 @@ Climbing grades run V0, V1, V2 and upwards. The critic is not measuring anything
 predicts what the climbing community would agree on, which is itself a matter of opinion. A
 confidence of 38% means the model is fairly sure, not that 38% of climbers agree.
 
-### How well it works
+### Inside the network
 
-Every selected hold becomes a point. The model looks at each pair of points — how far apart, in
-which direction, how that direction relates to the overhang — and learns which combinations of
-reaches are hard. It never sees the problem's name, its popularity, or which of the two board
-layouts it came from. 2.85 million parameters.
+**What goes in.** Not a picture of the wall. Each selected hold becomes a *node* described by
+four numbers: which of the 106 hold types it is, how it is rotated, where it sits on the wall,
+and what it is for. The wall angle comes along as a fifth input. A problem with nine holds is
+therefore nine nodes plus one angle — no image, no fixed-size grid.
 
-On 2,174 problems it had never seen, it is off by **0.935 V grades on average** and lands within
+**What happens inside.** "Graph" means the holds are treated as a set of points that all look at
+each other, rather than as a sequence or an image. Six layers of *attention* let every hold
+weigh every other hold: which pairs form a hard reach, which foot supports which hand. Attention
+alone only knows *that* two holds are in the problem, so each pair also gets a small bundle of
+geometry — horizontal and vertical distance, direction, and how that direction relates to the
+overhang — which nudges the attention toward physically meaningful pairs. Six blocks, eight
+attention heads, 192 numbers wide.
+
+**What comes out.** Fifteen numbers, one per grade from V0 to V14. Not a single predicted
+number, and nothing symbolic — just a score for each possible answer:
+
+```
+raw scores   V0 …  V7    V8    V9   V10  … V14
+            -2.0 … -0.2  3.95  4.13 2.15 … -2.2
+                    ↓ softmax
+probability  1%  …  3%   34%   38%  12%  …  1%
+```
+
+The highest score wins the label, and its probability is the reported confidence — here `V9` at
+`38%`. Notice V8 sits at 34%, almost tied. That near-tie *is* the low confidence: the model is
+saying "V9, but I would not argue with V8", which is roughly what climbers would say too.
+
+Because it produces a full distribution rather than one number, the generator can use its
+**expected value** — every grade weighted by its probability — instead of just the top label.
+That is a steadier signal for ranking candidates than a winner that flips between neighbours.
+
+### Training it
+
+Training runs in two stages. First the network sees 44,232 problems including ones only one or
+two people have climbed; their grades are unreliable, so they carry less weight and a
+deliberately blurred target. Then it is fine-tuned on the 17,477 problems with at least three
+ascents. Rough data first to learn the shape of the task, trustworthy data last to sharpen it.
+
+Two details make the training fit the problem:
+
+- **Soft, ordinal targets.** The community average is not a whole number — a problem may sit at
+  V8.4 — so instead of a single correct answer the target is spread across neighbouring grades.
+  An extra penalty scales with *how far* a prediction lands from the truth, because guessing V5
+  for a V9 should hurt far more than guessing V8.
+- **Temperature calibration.** A freshly trained network is overconfident. After training, a
+  single number is fitted on held-out data to flatten the distribution until the stated
+  confidence matches how often it is actually right. For this checkpoint it is **1.67** — the
+  raw scores are divided by it before the softmax.
+
+Standard machinery otherwise: AdamW, a cosine learning-rate schedule, and early stopping. This
+checkpoint ran 30 epochs and kept epoch 18, where validation error was lowest.
+
+The result, on 2,174 problems it had never seen: off by **0.935 V grades on average**, within
 one grade **78%** of the time. For comparison, climbers routinely disagree by a grade.
 
 Accuracy follows the data. At 35°, where there are many problems, the error is 0.849. At 55°,
 where only 389 exist, it is 1.063. Above V11 the data thins the same way — 74 problems at V13,
 three at V14 — so treat hard grades as informed guesses.
-
-### Training and predicting
 
 ```bash
 tension-train-grade data/processed/tb2_12x12.jsonl \
