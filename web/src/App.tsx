@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { About } from "./About";
 import { BoardView, type CalibrationMap } from "./board/BoardView";
 import { BoulderGenerator, rankCandidates } from "./generate/sample";
 import { Critic, type Prediction } from "./model/critic";
@@ -46,6 +47,7 @@ export default function App() {
   const [critic, setCritic] = useState<Critic>();
   const [error, setError] = useState<string>();
 
+  const [view, setView] = useState<"board" | "about">("board");
   const [layout, setLayout] = useState("mirror");
   const [angle, setAngle] = useState(40);
   const [targetGrade, setTargetGrade] = useState("V5");
@@ -204,8 +206,25 @@ export default function App() {
       <div className="masthead">
         <h1>Tension Board Lab</h1>
         <p>Tension Board 2 · 12×12</p>
+        <nav className="tabs" role="tablist">
+          {(["board", "about"] as const).map((name) => (
+            <button
+              key={name}
+              type="button"
+              role="tab"
+              aria-selected={view === name}
+              className={view === name ? "tab is-active" : "tab"}
+              onClick={() => setView(name)}
+            >
+              {name === "board" ? "Board" : "How it works"}
+            </button>
+          ))}
+        </nav>
       </div>
 
+      {view === "about" ? (
+        <About />
+      ) : (
       <div className="workspace">
         <section>
           <div className="stage">
@@ -352,6 +371,7 @@ export default function App() {
           </div>
         </aside>
       </div>
+      )}
     </main>
   );
 }
