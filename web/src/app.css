@@ -322,6 +322,26 @@ select {
   transition: width 320ms var(--ease);
 }
 
+/* Stacked under the board, the card is read top to bottom, so the button that fills
+   the board belongs above the grade it produces rather than buried below it. The
+   heading keeps its place at the top. */
+@media (max-width: 900px) {
+  .card-grade {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card-grade > h2 {
+    order: -2;
+  }
+
+  .card-grade .actions {
+    order: -1;
+    margin-top: 0;
+    margin-bottom: 1rem;
+  }
+}
+
 .footnote {
   margin: 0.7rem 0 0;
   font-size: 0.78rem;

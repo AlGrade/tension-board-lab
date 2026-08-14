@@ -270,7 +270,7 @@ export default function App() {
         </section>
 
         <aside className="panel">
-          <div className="card">
+          <div className="card card-grade">
             <h2>Predicted grade</h2>
             <div className={`verdict${prediction ? "" : " is-empty"}`}>
               {prediction ? (
