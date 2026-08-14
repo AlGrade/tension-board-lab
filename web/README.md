@@ -32,6 +32,30 @@ npm run dev
 `npm test` runs the parity suite, `npm run typecheck` the types, and `npm run build` a
 production bundle.
 
+## Deploying
+
+Vercel, from this directory: the project's root directory has to be set to `web`, because the
+repository root is a Python package and carries no `package.json`. Everything else the Vite
+preset infers correctly. Pushes to `main` deploy to production, other branches to previews.
+
+`vercel.json` sets headers, and JSON takes no comments, so the reasons are here:
+
+- **`Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`** buy `SharedArrayBuffer`,
+  without which onnxruntime-web silently falls back to a single thread. It loads the threaded
+  wasm build either way, so the cost of omitting them is invisible — just a slower grade. Safe
+  to require here because every subresource the page loads is same-origin; adding a font or a
+  script from a CDN would break the page until that host sends `Cross-Origin-Resource-Policy`.
+- **`/assets/` is immutable for a year.** Vite content-hashes those filenames, which includes
+  the 26 MB wasm runtime, so this is the cache that actually matters.
+- **`/models/` and `/data/` get an hour**, not a year: `tension-export-web` overwrites them
+  under the same names, so a long cache would pin a stale graph indefinitely. An hour also
+  bounds something worse than staleness. A cached `grade.int8.onnx` paired with a freshly
+  re-exported `critic.json` is exactly the drift the parity suite exists to catch, and it fails
+  the same silent way — a confident wrong grade. Keep the two lifetimes equal. Content-hashing
+  the artifact names, as Vite does, would remove the window altogether.
+- **`/board/` gets a day.** Wall photographs and a calibration fitted against the hold
+  lattice; nothing pairs with a model.
+
 ## Layout
 
 ```
