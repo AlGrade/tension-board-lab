@@ -63,6 +63,30 @@ select {
   color: inherit;
 }
 
+/* Touch browsers paint a grey box over whatever you tap, and a tap that lingers selects
+   the label underneath it. Both leave the control looking marked long after the tap; its
+   own :active and :focus-visible states already say what happened. */
+button,
+select,
+label,
+.hold-target {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+label {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Long-pressing the wall photo otherwise offers to save it, on top of the hold you meant
+   to place. Nothing here is worth copying out; the holds are the interface. */
+.board {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -134,8 +158,12 @@ select {
   cursor: pointer;
 }
 
-.hold-target:hover {
-  fill: rgb(255 255 255 / 24%);
+/* Touch has no hover to leave, so the highlight latches onto the last hold tapped and sits
+   there. Every :hover rule below is gated the same way, for the same reason. */
+@media (hover: hover) {
+  .hold-target:hover {
+    fill: rgb(255 255 255 / 24%);
+  }
 }
 
 .hold-halo {
@@ -225,8 +253,10 @@ select {
   text-decoration-color: var(--line-strong);
 }
 
-.linkish:hover:not(:disabled) {
-  color: var(--ink);
+@media (hover: hover) {
+  .linkish:hover:not(:disabled) {
+    color: var(--ink);
+  }
 }
 
 .linkish:disabled {
@@ -414,8 +444,10 @@ select {
   transition: border-color 140ms var(--ease), background-color 140ms var(--ease);
 }
 
-.field select:hover {
-  border-color: var(--line-strong);
+@media (hover: hover) {
+  .field select:hover {
+    border-color: var(--line-strong);
+  }
 }
 
 .actions {
@@ -449,8 +481,10 @@ select {
   color: var(--accent-ink);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 88%, var(--focus));
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 88%, var(--focus));
+  }
 }
 
 .btn:disabled {
@@ -527,8 +561,10 @@ select {
   transition: background-color 140ms var(--ease), color 140ms var(--ease);
 }
 
-.tab:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--ink);
+  }
 }
 
 .tab.is-active {
