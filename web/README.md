@@ -25,9 +25,14 @@ tension-export-web
 Then, in this directory:
 
 ```bash
+nvm use
 npm install
 npm run dev
 ```
+
+Node 24 — `.nvmrc` pins the exact version this was built against, and `engines.node` in
+`package.json` keeps it to the major. npm only warns on a mismatch rather than refusing, so
+`nvm use` is the step that matters locally.
 
 `npm test` runs the parity suite, `npm run typecheck` the types, and `npm run build` a
 production bundle.
@@ -37,6 +42,10 @@ production bundle.
 Vercel, from this directory: the project's root directory has to be set to `web`, because the
 repository root is a Python package and carries no `package.json`. Everything else the Vite
 preset infers correctly. Pushes to `main` deploy to production, other branches to previews.
+
+The build runs on whatever `engines.node` asks for, which is why that is a `24.x` range and not
+the exact version in `.nvmrc`: Vercel picks the minor within the major, and pinning past it
+would eventually fail the build for a patch release nobody chose.
 
 `vercel.json` sets headers, and JSON takes no comments, so the reasons are here:
 
