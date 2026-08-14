@@ -105,6 +105,19 @@ deployed app loads at runtime are committed, so the site builds from a clone alo
 model weights and board reference data, nothing account-derived. The fp32 graphs and the parity
 fixtures stay out.
 
+## Third-party material
+
+"Tension Board" is a trademark of Tension Climbing. This is an independent, unofficial project,
+not affiliated with or endorsed by them.
+
+The board images in [`web/public/board/`](web/public/board/) are cropped from Tension's official
+layout renders, and [`configs/tb2_12x12_hold_catalog.csv`](configs/tb2_12x12_hold_catalog.csv) is
+transcribed from their install guide. Both are theirs, used here so the app can draw on the real
+wall — open an issue if they should go. The training database is not redistributed at all: it is
+downloaded from the Tension app with [BoardLib](https://github.com/lemeryfertitta/BoardLib) and
+stays git-ignored.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT for the code, documentation and trained weights — see [LICENSE](LICENSE). The third-party
+material above is excluded.
