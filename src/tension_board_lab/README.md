@@ -265,8 +265,10 @@ featurization *exactly*; where it drifts, the app shows a confident wrong grade 
 errors. Recording real problems together with the tensors PyTorch produced for them turns the
 most error-prone part of the project into something a test can check.
 
-Everything written to `web/public/` is generated and git-ignored, like `checkpoints/` and
-`data/processed/`.
+Of what lands in `web/public/`, the two int8 graphs and `board.json`, `critic.json` and
+`generator.json` are committed — they are what the deployed app loads, and a clone should be
+able to build the site. Re-export and commit them again after retraining, or the site keeps
+serving the old weights. The fp32 graphs and the fixtures stay out of Git.
 
 ---
 

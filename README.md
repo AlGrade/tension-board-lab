@@ -52,7 +52,8 @@ python -m pip install -e ".[data,dev]"
 ```
 
 The models are trained on a local Aurora board database, which is not in this repository — so
-the checkpoints are not either. With one, grade a problem:
+the training checkpoints are not either, only the exported ones the web app runs. With a
+checkpoint, grade a problem:
 
 ```bash
 tension-predict checkpoints/grade/tb2_12x12.pt examples/route.json
@@ -87,7 +88,7 @@ examples/              example input for tension-predict
 src/tension_board_lab/ the Python package
 tests/                 test suite, mirroring the package
 web/                   the browser application
-web/public/            exported ONNX graphs and JSON artifacts (git-ignored)
+web/public/            the int8 models and board data the deployed app loads
 ```
 
 Inside the package, the modules every model needs — the problem schema, the grade axis, the
@@ -97,9 +98,12 @@ model gets its own subpackage below them: [`grade/`](src/tension_board_lab/grade
 [`export/`](src/tension_board_lab/export/). `checkpoints/` and `reports/` are split by model the
 same way, so two models never contend for one filename.
 
-Board databases, generated datasets, trained checkpoints, and the exported web artifacts are
-kept out of Git. The databases may contain account-derived or licensed data, and everything else
-on that list is reproducible from them with a documented command.
+Board databases, generated datasets and trained checkpoints are kept out of Git — the databases
+may contain account-derived or licensed data, and the rest is reproducible from them with a
+documented command. The exception is `web/public/`: the two int8 models and three JSON files the
+deployed app loads at runtime are committed, so the site builds from a clone alone. They hold
+model weights and board reference data, nothing account-derived. The fp32 graphs and the parity
+fixtures stay out.
 
 ## License
 

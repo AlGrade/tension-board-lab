@@ -22,10 +22,19 @@ checkpoints/*
 !checkpoints/.gitkeep
 *.env
 
-# Web application: dependencies, build output, and exported model artifacts.
-# Everything under public/ is produced by tension-export-onnx and tension-export-web, and
-# some of it (parity fixtures, the placement-id table) derives from the board database.
+# Web application: dependencies and build output.
 web/node_modules/
 web/dist/
-web/public/models/
-web/public/data/
+
+# Exported artifacts. The handful the deployed app loads at runtime are committed, so the
+# site can be built from a clone alone - they are model weights and board reference data,
+# with nothing account-derived in them. Everything else stays out: the fp32 graphs are four
+# times the size and only used by the local parity tests, and the fixtures and placement-id
+# table are derived from the board database.
+web/public/models/*
+!web/public/models/grade.int8.onnx
+!web/public/models/generator.int8.onnx
+web/public/data/*
+!web/public/data/board.json
+!web/public/data/critic.json
+!web/public/data/generator.json

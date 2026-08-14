@@ -12,8 +12,9 @@ someone who only wants to grade a problem they built should not pay for it.
 
 ## Running it
 
-The artifacts under `public/` are produced by the Python package and are git-ignored, so build
-them first, from the repository root:
+The models the app runs are committed under `public/`, so `npm run dev` works from a clone. To
+rebuild them after retraining, or to get the extra artifacts the parity tests need, run this
+from the repository root:
 
 ```bash
 python -m pip install -e ".[export]"
