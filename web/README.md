@@ -49,11 +49,17 @@ would eventually fail the build for a patch release nobody chose.
 
 `vercel.json` sets headers, and JSON takes no comments, so the reasons are here:
 
-- **`Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`** buy `SharedArrayBuffer`,
-  without which onnxruntime-web silently falls back to a single thread. It loads the threaded
-  wasm build either way, so the cost of omitting them is invisible — just a slower grade. Safe
-  to require here because every subresource the page loads is same-origin; adding a font or a
-  script from a CDN would break the page until that host sends `Cross-Origin-Resource-Policy`.
+- **No `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`, deliberately.** Setting
+  that pair grants `SharedArrayBuffer`, and onnxruntime-web reads that as permission to run
+  multi-threaded: it stops forcing `numThreads` to 1 and spawns module workers. The build puts
+  onnxruntime's worker code in the entry chunk and points the workers at that same chunk, so
+  each one re-evaluates the entry — including Vite's modulepreload polyfill, which calls
+  `document.createElement` at the top level. Workers have no `document`. Every worker dies with
+  `ReferenceError: document is not defined`, one per thread, and inference is gone while the
+  board still renders normally: holds select, nothing grades. Do not add these headers back to
+  buy threads without fixing the worker bundling first — the failure does not reproduce in
+  `npm run dev` or `npm run preview`, because neither sends the headers, so the whole thing is
+  invisible until it is in production.
 - **`/assets/` is immutable for a year.** Vite content-hashes those filenames, which includes
   the 26 MB wasm runtime, so this is the cache that actually matters.
 - **`/models/` and `/data/` get an hour**, not a year: `tension-export-web` overwrites them
