@@ -11,6 +11,46 @@ const DISTRIBUTION = [
   0.008,
 ];
 
+function GeneratorDiagram() {
+  const inputs = [
+    { y: 32, text: "grade + angle you asked for" },
+    { y: 62, text: "which wall (mirror / spray)" },
+    { y: 92, text: "holds placed so far" },
+  ];
+  return (
+    <svg viewBox="0 0 560 150" className="figure" role="img" aria-label="How the generator works">
+      {inputs.map(({ y, text }, i) => (
+        <g key={i}>
+          <text x="6" y={y + 4} className="fig-note">{text}</text>
+          <path d={`M196 ${y} H228`} className="fig-arrow" markerEnd="url(#tip2)" />
+        </g>
+      ))}
+
+      <rect x="236" y="38" width="126" height="48" rx="10" className="fig-box" />
+      <text x="299" y="59" className="fig-box-text" textAnchor="middle">Decoder-only</text>
+      <text x="299" y="75" className="fig-box-text" textAnchor="middle">transformer</text>
+
+      <path d="M370 62 h28" className="fig-arrow" markerEnd="url(#tip2)" />
+      <text x="406" y="52" className="fig-label">a score for every</text>
+      <text x="406" y="68" className="fig-label">possible next hold</text>
+      <text x="406" y="86" className="fig-note">illegal ones struck out first</text>
+
+      {/* Pick one, append it, and run again. */}
+      <path d="M474 96 v22 H150 v-18" className="fig-arrow fig-loop" markerEnd="url(#tip2)" />
+      <text x="312" y="134" className="fig-note" textAnchor="middle">
+        pick one, add it to the problem, repeat
+      </text>
+
+      <defs>
+        <marker id="tip2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+          orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" className="fig-tip" />
+        </marker>
+      </defs>
+    </svg>
+  );
+}
+
 function CriticDiagram() {
   // A handful of holds, drawn as a graph: every point connected to every other.
   const nodes = [
@@ -63,47 +103,7 @@ function CriticDiagram() {
 
       <defs>
         <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
-                orient="auto-start-reverse">
-          <path d="M0 0 L10 5 L0 10 z" className="fig-tip" />
-        </marker>
-      </defs>
-    </svg>
-  );
-}
-
-function GeneratorDiagram() {
-  const inputs = [
-    { y: 32, text: "grade + angle you asked for" },
-    { y: 62, text: "which wall (mirror / spray)" },
-    { y: 92, text: "holds placed so far" },
-  ];
-  return (
-    <svg viewBox="0 0 560 150" className="figure" role="img" aria-label="How the generator works">
-      {inputs.map(({ y, text }, i) => (
-        <g key={i}>
-          <text x="6" y={y + 4} className="fig-note">{text}</text>
-          <path d={`M196 ${y} H228`} className="fig-arrow" markerEnd="url(#tip2)" />
-        </g>
-      ))}
-
-      <rect x="236" y="38" width="126" height="48" rx="10" className="fig-box" />
-      <text x="299" y="59" className="fig-box-text" textAnchor="middle">Decoder-only</text>
-      <text x="299" y="75" className="fig-box-text" textAnchor="middle">transformer</text>
-
-      <path d="M370 62 h28" className="fig-arrow" markerEnd="url(#tip2)" />
-      <text x="406" y="52" className="fig-label">a score for every</text>
-      <text x="406" y="68" className="fig-label">possible next hold</text>
-      <text x="406" y="86" className="fig-note">illegal ones struck out first</text>
-
-      {/* Pick one, append it, and run again. */}
-      <path d="M474 96 v22 H150 v-18" className="fig-arrow fig-loop" markerEnd="url(#tip2)" />
-      <text x="312" y="134" className="fig-note" textAnchor="middle">
-        pick one, add it to the problem, repeat
-      </text>
-
-      <defs>
-        <marker id="tip2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
-                orient="auto-start-reverse">
+          orient="auto-start-reverse">
           <path d="M0 0 L10 5 L0 10 z" className="fig-tip" />
         </marker>
       </defs>
@@ -115,35 +115,9 @@ export function About() {
   return (
     <article className="about">
       <p className="lede">
-        Two small neural networks, trained from scratch on this board&rsquo;s own history. One
-        judges a problem, the other invents them. Both run in this tab — nothing is sent
-        anywhere.
+        Two small neural networks, trained from scratch on TB2 boulders. One
+        invents problems, the other grades them. Both run in the browser.
       </p>
-
-      <section>
-        <h2>The grade critic</h2>
-        <p>
-          Show it the holds you picked and how steep the wall is, and it answers with a
-          difficulty.
-        </p>
-        <CriticDiagram />
-        <p>
-          Every hold becomes a point, and the network lets each point weigh every other one —
-          which pair makes a long reach, which foot holds up which hand. It never sees the
-          problem&rsquo;s name or how popular it is; only where the holds are, which way they
-          face, and what each is for.
-        </p>
-        <p>
-          What comes out is not one number but <strong>fifteen</strong>: a score for every grade
-          from V0 to V14. The highest wins, and its share is the confidence. A V9 at 38% usually
-          has V8 close behind — that near-tie <em>is</em> the low confidence, and it is roughly
-          what two climbers would say to each other.
-        </p>
-        <p className="muted">
-          Measured against 2,174 problems it had never seen: off by 0.935 grades on average,
-          within one grade 78% of the time. Climbers routinely disagree by a grade.
-        </p>
-      </section>
 
       <section>
         <h2>The generator</h2>
@@ -161,8 +135,34 @@ export function About() {
           invalid problem cannot come out, rather than being filtered out afterwards.
         </p>
         <p>
-          Every press of Generate samples twelve candidates. The critic grades all of them, and
-          the one closest to what you asked for goes on the board.
+          One press of Generate produces twelve of them. Choosing which one you actually see is
+          the second network&rsquo;s job.
+        </p>
+      </section>
+
+      <section>
+        <h2>The grade critic</h2>
+        <p>
+          Show it the holds and how steep the wall is, and it answers with a difficulty. It
+          grades all twelve candidates, and the one closest to what you asked for goes on the
+          board — and it grades again, live, every time you change a hold yourself.
+        </p>
+        <CriticDiagram />
+        <p>
+          Every hold becomes a point, and the network lets each point weigh every other one —
+          which pair makes a long reach, which foot holds up which hand. It never sees the
+          problem&rsquo;s name or how popular it is; only where the holds are, which way they
+          face, and what each is for.
+        </p>
+        <p>
+          What comes out is not one number but <strong>fifteen</strong>: a score for every grade
+          from V0 to V14. The highest wins, and its share is the confidence. A V9 at 38% usually
+          has V8 close behind — that near-tie <em>is</em> the low confidence, and it is roughly
+          what two climbers would say to each other.
+        </p>
+        <p className="muted">
+          Measured against 2,174 problems it had never seen: off by 0.935 grades on average,
+          within one grade 78% of the time. Climbers routinely disagree by a grade.
         </p>
       </section>
 
