@@ -352,6 +352,18 @@ select {
   gap: 0.7rem;
 }
 
+/* Layout, angle and target share one row; the panel is narrow, so they get equal
+   columns and the selects truncate rather than push the card wider. */
+.fields.is-triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.fields.is-triple select {
+  padding-right: 1.4rem;
+  background-position: right 0.6rem center, right 0.35rem center;
+}
+
 .field {
   display: flex;
   flex-direction: column;

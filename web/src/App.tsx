@@ -297,11 +297,28 @@ export default function App() {
               Estimated by a model from the holds and the angle — not an official grade. It
               re-runs every time you change the problem.{scoring && prediction ? " Updating…" : ""}
             </p>
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={generate}
+                disabled={!critic || generating}
+              >
+                {generating ? (
+                  <>
+                    <span className="busy" />
+                    {status ?? "Working"}
+                  </>
+                ) : (
+                  "Generate a problem"
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="card">
             <h2>Board</h2>
-            <div className="fields">
+            <div className="fields is-triple">
               <label className="field">
                 <span>Layout</span>
                 <select
@@ -330,12 +347,6 @@ export default function App() {
                   ))}
                 </select>
               </label>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2>Generate</h2>
-            <div className="fields">
               <label className="field">
                 <span>Target</span>
                 <select
@@ -350,23 +361,6 @@ export default function App() {
                   ))}
                 </select>
               </label>
-            </div>
-            <div className="actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={generate}
-                disabled={!critic || generating}
-              >
-                {generating ? (
-                  <>
-                    <span className="busy" />
-                    {status ?? "Working"}
-                  </>
-                ) : (
-                  "Generate a problem"
-                )}
-              </button>
             </div>
           </div>
 
