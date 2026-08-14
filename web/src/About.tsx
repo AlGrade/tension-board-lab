@@ -128,11 +128,11 @@ export function About() {
         </p>
         <GeneratorDiagram />
         <p>
-          It chooses a <em>position</em> rather than a hold; the wall decides what is bolted
-          there, which is why it also has to be told which of the two layouts you are on. Before
-          each pick, impossible choices are switched off — a hold already used, a position that
-          does not exist on this wall, ending the climb before there is a start and a finish. An
-          invalid problem cannot come out, rather than being filtered out afterwards.
+          The network never sees a finished problem. Each run it gets what you asked for, which
+          wall you are on, and the holds placed so far, and answers with a score for every hold
+          that could come next — impossible ones struck out first. One is drawn from those
+          scores, added to the problem, and the whole thing runs again. A problem of ten holds
+          is ten passes through the network, each one knowing everything placed before it.
         </p>
         <p>
           One press of Generate produces twelve of them. Choosing which one you actually see is
@@ -170,17 +170,12 @@ export function About() {
         <h2>Worth knowing</h2>
         <ul className="notes">
           <li>
-            <strong>Matching is allowed</strong> on every generated problem — both hands may
-            share any hold.
+            <strong>Matching is allowed</strong>.
           </li>
           <li>
             <strong>V11 and harder gets shaky.</strong> There are only a few hundred such
             problems to learn from, and a handful above V12, so both networks are guessing more
             than they let on. Treat hard grades as a starting point, not a verdict.
-          </li>
-          <li>
-            The generator learned which holds go together, not how a body moves between them. It
-            can leave a foot too far from the hold it should support.
           </li>
         </ul>
       </section>
