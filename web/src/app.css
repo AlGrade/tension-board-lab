@@ -619,3 +619,38 @@ select {
 .fig-bar-peak {
   fill: var(--ink);
 }
+
+/* ---------- narrow screens ---------- */
+
+/* Both rows wrap on a phone, and `margin-left: auto` then strands the wrapped half
+   against the right edge. Centre everything instead. */
+@media (max-width: 640px) {
+  .masthead,
+  .editbar,
+  .roles,
+  .editbar .hint {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .tabs,
+  .editbar .hint {
+    margin-left: 0;
+  }
+
+  .about {
+    text-align: left;
+  }
+}
+
+/* The notes moved into the side panel, which runs at a smaller scale than the about page. */
+.card .notes {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  gap: 0.6rem;
+}
+
+.card .notes strong {
+  color: var(--ink);
+  font-weight: 600;
+}

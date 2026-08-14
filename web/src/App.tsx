@@ -369,6 +369,20 @@ export default function App() {
               </button>
             </div>
           </div>
+
+          <div className="card">
+            <h2>Worth knowing</h2>
+            <ul className="notes">
+              <li>
+                <strong>Matching is allowed</strong>.
+              </li>
+              <li>
+                <strong>V11 and harder gets shaky.</strong> There are only a few hundred such
+                problems to learn from, and a handful above V12, so both networks are guessing
+                more than they let on. Treat hard grades as a starting point, not a verdict.
+              </li>
+            </ul>
+          </div>
         </aside>
       </div>
       )}
