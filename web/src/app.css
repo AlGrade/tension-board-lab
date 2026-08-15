@@ -19,6 +19,7 @@
   --focus: #4f7cff;
   --veil: rgb(255 255 255 / 78%);
 
+  --gutter: clamp(1rem, 3vw, 2rem);
   --radius: 14px;
   --radius-lg: 20px;
   --shadow-1: 0 1px 2px rgb(16 18 22 / 6%), 0 4px 12px rgb(16 18 22 / 4%);
@@ -100,7 +101,7 @@ label {
 .app {
   max-width: 1180px;
   margin: 0 auto;
-  padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 3vw, 2rem) 4rem;
+  padding: clamp(1.25rem, 3vw, 2.5rem) var(--gutter) 4rem;
 }
 
 .masthead {
@@ -748,6 +749,22 @@ label {
 
   .about {
     text-align: left;
+  }
+
+  /* A phone has no width to spare: the wall runs edge to edge, so the holds are as large as
+     the screen allows. The stage cancels the shell's gutter instead of fighting it, and
+     gives up the frame that only made sense with room around it. */
+  .stage {
+    margin-inline: calc(-1 * var(--gutter));
+    padding: 0;
+    border-inline: 0;
+    box-shadow: none;
+  }
+
+  .stage,
+  .stage-veil,
+  .board {
+    border-radius: 0;
   }
 }
 
