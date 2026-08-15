@@ -31,6 +31,13 @@ function nextRole(current: HoldRole | undefined): HoldRole | undefined {
   return index === HOLD_ROLES.length - 1 ? undefined : HOLD_ROLES[index + 1];
 }
 
+/** Resolves after the browser has painted the current state. */
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+  });
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
@@ -134,6 +141,10 @@ export default function App() {
     setError(undefined);
     setStatus("Sampling");
     try {
+      // Sampling holds the main thread between its awaits, so React would otherwise get no
+      // frame to paint the veil in — on every run after the first, where nothing waits on
+      // the network, it would appear only once the work was already over.
+      await nextPaint();
       if (!generator.current) {
         setStatus("Loading model");
         const artifact = await fetchJson<GeneratorArtifact>("/data/generator.json");
@@ -170,7 +181,7 @@ export default function App() {
     return (
       <main className="app">
         <div className="masthead">
-          <h1>Tension Board Lab</h1>
+          <h1>Tension Board AI</h1>
         </div>
         <div className="notice">
           <p className="error">{error}</p>
@@ -187,7 +198,7 @@ export default function App() {
     return (
       <main className="app">
         <div className="masthead">
-          <h1>Tension Board Lab</h1>
+          <h1>Tension Board AI</h1>
         </div>
         <div className="workspace">
           <div className="stage">
@@ -204,8 +215,7 @@ export default function App() {
   return (
     <main className="app">
       <div className="masthead">
-        <h1>Tension Board Lab</h1>
-        <p>Tension Board 2 · 12×12</p>
+        <h1>Tension Board AI</h1>
         <nav className="tabs" role="tablist">
           {(["board", "about"] as const).map((name) => (
             <button
@@ -235,6 +245,18 @@ export default function App() {
               holds={holds}
               onToggle={toggle}
             />
+            {/* Generating replaces every hold on the board, so the whole board waits
+                behind a veil rather than letting you edit a problem about to vanish. */}
+            {generating ? (
+              <div
+                className="stage-veil"
+                role="status"
+                aria-live="polite"
+                aria-label={status ?? "Working"}
+              >
+                <span className="spinner" />
+              </div>
+            ) : null}
           </div>
 
           <div className="editbar">

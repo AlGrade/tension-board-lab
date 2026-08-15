@@ -17,6 +17,7 @@
   --accent: #14161a;
   --accent-ink: #ffffff;
   --focus: #4f7cff;
+  --veil: rgb(255 255 255 / 78%);
 
   --radius: 14px;
   --radius-lg: 20px;
@@ -37,6 +38,7 @@
     --accent: #f2f4f7;
     --accent-ink: #0b0c0f;
     --focus: #7aa2ff;
+    --veil: rgb(11 12 15 / 76%);
 
     --shadow-1: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 14px rgb(0 0 0 / 30%);
   }
@@ -116,12 +118,6 @@ label {
   letter-spacing: -0.015em;
 }
 
-.masthead p {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: 0.9rem;
-}
-
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -138,11 +134,55 @@ label {
 /* ---------- board ---------- */
 
 .stage {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 10px;
   box-shadow: var(--shadow-1);
+}
+
+/* Sits over the board while a problem is being generated. It covers the holds, so it also
+   swallows the taps that would edit a problem on its way out. */
+.stage-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: var(--veil);
+  backdrop-filter: blur(2px);
+  animation: fade-in 160ms var(--ease);
+}
+
+/* The board is the only thing on screen worth watching while it works, so the ring is sized
+   against the board rather than against the type. */
+.spinner {
+  width: clamp(4rem, 34%, 11rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 5px solid var(--line-strong);
+  border-top-color: var(--ink);
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
 }
 
 .board {
