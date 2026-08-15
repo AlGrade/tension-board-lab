@@ -26,6 +26,7 @@ checkpoints/*
 # Web application: dependencies and build output.
 web/node_modules/
 web/dist/
+web/*.tsbuildinfo
 
 # Exported artifacts. The handful the deployed app loads at runtime are committed, so the
 # site can be built from a clone alone - they are model weights and board reference data,
