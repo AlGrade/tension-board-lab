@@ -56,8 +56,21 @@ runs unprivileged with a read-only root filesystem, all capabilities dropped, an
 memory, CPU and pid ceilings — nginx's scratch paths are redirected into the small no-exec
 tmpfs Compose supplies.
 
-Deployment is manual. Server addresses, credentials, release procedure and other operational
-notes deliberately live outside this repository.
+Going public adds a Cloudflare connector under the `public` profile, which dials out to
+Cloudflare rather than accepting anything inbound. The host therefore never opens a port to the
+internet, and TLS terminates at the edge:
+
+```bash
+install -m 600 /dev/stdin .cloudflared-token   # paste the tunnel token
+docker compose --profile public up -d
+```
+
+The token is a credential, so it is mounted as a Compose secret rather than an environment
+variable, and `.cloudflared-token` is ignored by both Git and Docker. The image is pinned by
+digest, not only by tag.
+
+Deployment is manual. Server addresses, the tunnel's Cloudflare configuration, release
+procedure and other operational notes deliberately live outside this repository.
 
 `nginx-static.conf` sets the cache headers, and the reasons behind them are these:
 
@@ -92,7 +105,7 @@ src/generate/       constraint masks and the sampling loop
 src/board/          SVG renderer
 test/               parity against fixtures recorded from Python
 Dockerfile          Vite build stage, then the nginx image that serves its output
-compose.yaml        resource-capped, loopback-only self-hosted deployment
+compose.yaml        resource-capped self-hosted deployment, plus the public tunnel
 nginx-static.conf   SPA routing, cache policy, and the health check
 ```
 

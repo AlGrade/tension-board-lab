@@ -40,6 +40,75 @@ services:
         max-size: 10m
         max-file: "3"
 
+  # Disabled by default. The public profile adds one outbound-only Cloudflare connector without
+  # publishing another host port or joining any network owned by another application.
+  cloudflared:
+    profiles:
+      - public
+    image: cloudflare/cloudflared:2026.7.2@sha256:4f6655284ab3d252b7f28fedb19fe6c8fc82ee5b1295c20ac74d475e5398a52d
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --loglevel
+      - info
+      - --metrics
+      - 127.0.0.1:20241
+      - --grace-period
+      - 30s
+      - run
+      - --token-file
+      - /run/secrets/cloudflared-token
+    depends_on:
+      web:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test:
+        - CMD
+        - cloudflared
+        - tunnel
+        - --metrics
+        - 127.0.0.1:20241
+        - ready
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    secrets:
+      - source: cloudflared_token
+        target: cloudflared-token
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 40s
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777,nosuid,nodev,noexec
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    cpus: 0.20
+    mem_limit: 128m
+    mem_reservation: 16m
+    memswap_limit: 128m
+    oom_score_adj: 500
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
+    networks:
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
 networks:
   edge:
     driver: bridge
+
+secrets:
+  cloudflared_token:
+    file: ${CLOUDFLARED_TOKEN_FILE:-.cloudflared-token}

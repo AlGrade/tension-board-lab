@@ -23,6 +23,7 @@ checkpoints/*
 !checkpoints/.gitkeep
 .env*
 *.env
+.cloudflared-token
 
 # Web application: dependencies and build output.
 web/node_modules/

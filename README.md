@@ -2,6 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**Live app:** [boulderbot.win](https://boulderbot.win)
+
 Two small neural networks for boulder problems on a **Tension Board 2 12x12**, and a web app
 that runs both of them in the browser with no backend. A Tension Board is a standardized indoor
 climbing wall: the holds stay in fixed positions, and a problem is a choice of which ones you
