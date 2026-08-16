@@ -1,0 +1,45 @@
+name: tension-board-lab
+
+services:
+  web:
+    image: tension-board-lab-web:${TENSION_IMAGE_TAG:-canary}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: static
+    # Canary ingress only. Nothing outside the host can reach this binding; the public edge can
+    # be connected after the loopback checks pass.
+    ports:
+      - 127.0.0.1:${TENSION_CANARY_PORT:-18088}:8080
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,nosuid,nodev,noexec
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    cpus: 0.25
+    mem_limit: 96m
+    mem_reservation: 16m
+    memswap_limit: 96m
+    oom_score_adj: 500
+    shm_size: 8m
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
+    networks:
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  edge:
+    driver: bridge

@@ -39,15 +39,27 @@ production bundle.
 
 ## Deploying
 
-Vercel, from this directory: the project's root directory has to be set to `web`, because the
-repository root is a Python package and carries no `package.json`. Everything else the Vite
-preset infers correctly. Pushes to `main` deploy to production, other branches to previews.
+Self-hosted, as two containers built from one [`Dockerfile`](Dockerfile): a build stage that
+runs Vite, and an nginx stage that serves the `dist/` it produced. Nothing else runs. Grading,
+generating and rendering all happen in the browser, so hosting this app is serving files, and
+the deployment is small enough to say in full:
 
-The build runs on whatever `engines.node` asks for, which is why that is a `24.x` range and not
-the exact version in `.nvmrc`: Vercel picks the minor within the major, and pinning past it
-would eventually fail the build for a patch release nobody chose.
+```bash
+docker compose build
+docker compose up -d
+curl -fsS http://127.0.0.1:18088/healthz
+```
 
-`vercel.json` sets headers, and JSON takes no comments, so the reasons are here:
+[`compose.yaml`](compose.yaml) binds that port to the host loopback rather than publishing it,
+so the container can be checked on the server before anything outside can reach it. The service
+runs unprivileged with a read-only root filesystem, all capabilities dropped, and explicit
+memory, CPU and pid ceilings — nginx's scratch paths are redirected into the small no-exec
+tmpfs Compose supplies.
+
+Deployment is manual. Server addresses, credentials, release procedure and other operational
+notes deliberately live outside this repository.
+
+`nginx-static.conf` sets the cache headers, and the reasons behind them are these:
 
 - **No `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`, deliberately.** Setting
   that pair grants `SharedArrayBuffer`, and onnxruntime-web reads that as permission to run
@@ -59,7 +71,7 @@ would eventually fail the build for a patch release nobody chose.
   board still renders normally: holds select, nothing grades. Do not add these headers back to
   buy threads without fixing the worker bundling first — the failure does not reproduce in
   `npm run dev` or `npm run preview`, because neither sends the headers, so the whole thing is
-  invisible until it is in production.
+  invisible until it is deployed.
 - **`/assets/` is immutable for a year.** Vite content-hashes those filenames, which includes
   the 26 MB wasm runtime, so this is the cache that actually matters.
 - **`/models/` and `/data/` get an hour**, not a year: `tension-export-web` overwrites them
@@ -79,6 +91,9 @@ src/model/          featurization, tokenizer, and the onnxruntime-web sessions
 src/generate/       constraint masks and the sampling loop
 src/board/          SVG renderer
 test/               parity against fixtures recorded from Python
+Dockerfile          Vite build stage, then the nginx image that serves its output
+compose.yaml        resource-capped, loopback-only self-hosted deployment
+nginx-static.conf   SPA routing, cache policy, and the health check
 ```
 
 ## Parity is the whole game

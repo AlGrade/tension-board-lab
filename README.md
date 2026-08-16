@@ -1,7 +1,5 @@
 # Tension Board Lab
 
-**[tension-board-lab.vercel.app](https://tension-board-lab.vercel.app/)** — try it in the browser.
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Two small neural networks for boulder problems on a **Tension Board 2 12x12**, and a web app

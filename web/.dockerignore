@@ -1,0 +1,18 @@
+.git
+.gitignore
+.env
+.env.*
+.idea
+.vscode
+
+node_modules
+dist
+coverage
+*.log
+
+README.md
+test
+
+# Compose is deployment input, not image content.
+compose*.yaml
+compose*.yml
