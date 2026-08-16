@@ -652,6 +652,35 @@ label {
   font-weight: 600;
 }
 
+/* The only link in the app. Underlined rather than coloured, so it reads as a link in both
+   themes without introducing a hue the palette does not otherwise use. */
+.about a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+  transition: text-decoration-color 140ms var(--ease);
+}
+
+.about a:hover {
+  text-decoration-color: var(--ink);
+}
+
+.about a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Sits outside the last section, so it needs its own rule to beat `.about p`. */
+.about .colophon {
+  margin: 0;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--ink-3);
+}
+
 .notes {
   margin: 0;
   padding: 0;

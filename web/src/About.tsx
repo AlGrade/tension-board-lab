@@ -166,6 +166,17 @@ export function About() {
         </p>
       </section>
 
+      <p className="colophon">
+        Maintained at{" "}
+        <a
+          href="https://github.com/AlGrade/tension-board-lab"
+          target="_blank"
+          rel="noreferrer"
+        >
+          github.com/AlGrade/tension-board-lab
+        </a>
+        , where contributions are welcome.
+      </p>
     </article>
   );
 }
