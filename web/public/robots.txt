@@ -1,0 +1,7 @@
+# The board images are cropped from Tension's official layout renders. They are served so
+# the app can draw on the real wall, not to be redistributed through image search.
+User-agent: *
+Disallow: /board/
+
+User-agent: Googlebot-Image
+Disallow: /
